@@ -2,10 +2,10 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
+import { PrismaClient } from "@prisma/client";
 import { 
   Donation, 
   Expenditure, 
@@ -15,6 +15,7 @@ import {
 } from "./src/types.js"; // Standard TS/JS resolver
 
 export const app = express();
+const prisma = process.env.DATABASE_URL ? new PrismaClient() : null;
 const PORT = 3000;
 
 // Resolve __dirname since we are in ES Module context
@@ -375,6 +376,425 @@ function saveDBState(state: any) {
   }
 }
 
+// --- PRISMA DATABASE HYBRID INTEGRATION ENGINE ---
+
+function mapToPrismaPaymentMethod(method: string): any {
+  if (method === "Bank Transfer" || method === "BANK_TRANSFER") return "BANK_TRANSFER";
+  if (method === "E-Wallet" || method === "E_WALLET") return "E_WALLET";
+  if (method === "Cash" || method === "CASH") return "CASH";
+  if (method === "Crypto" || method === "CRYPTO") return "CRYPTO";
+  return "CASH";
+}
+
+function mapFromPrismaPaymentMethod(method: string): any {
+  if (method === "BANK_TRANSFER") return "Bank Transfer";
+  if (method === "E_WALLET") return "E-Wallet";
+  if (method === "CASH") return "Cash";
+  if (method === "CRYPTO") return "Crypto";
+  return method || "Cash";
+}
+
+function mapToPrismaExpenditureCategory(cat: string): any {
+  if (cat === "Material" || cat === "MATERIAL") return "MATERIAL";
+  if (cat === "Labor" || cat === "LABOR") return "LABOR";
+  if (cat === "Equipment" || cat === "EQUIPMENT") return "EQUIPMENT";
+  if (cat === "Permit/Admin" || cat === "PERMIT_ADMIN") return "PERMIT_ADMIN";
+  return "OTHER";
+}
+
+function mapFromPrismaExpenditureCategory(cat: string): any {
+  if (cat === "MATERIAL") return "Material";
+  if (cat === "LABOR") return "Labor";
+  if (cat === "EQUIPMENT") return "Equipment";
+  if (cat === "PERMIT_ADMIN") return "Permit/Admin";
+  return "Other";
+}
+
+async function ensurePostgresBudgets() {
+  if (!prisma) return;
+  try {
+    const count = await prisma.budget.count();
+    if (count === 0) {
+      const data = defaultRABBudgets.map(b => ({
+        itemName: b.itemName,
+        category: b.category,
+        targetAmount: b.targetAmount
+      }));
+      await prisma.budget.createMany({ data });
+    }
+  } catch (err) {
+    console.error("Prisma ensurePostgresBudgets error", err);
+  }
+}
+
+async function ensurePostgresUsers() {
+  if (!prisma) return;
+  try {
+    const count = await prisma.user.count();
+    if (count === 0) {
+      const usersToSeed = [
+        {
+          id: "user-admin",
+          email: "admin@masjid.id",
+          name: "Haji Sulaiman (Super Admin)",
+          role: "ADMIN" as any,
+          password: bcrypt.hashSync("admin", 10)
+        },
+        {
+          id: "user-treasurer",
+          email: "bendahara@masjid.id",
+          name: "David Miller (Bendahara)",
+          role: "TREASURER" as any,
+          password: bcrypt.hashSync("treasurer123", 10)
+        },
+        {
+          id: "user-pm",
+          email: "pm@masjid.id",
+          name: "Arthur Pendelton (PM)",
+          role: "PROJECT_MANAGER" as any,
+          password: bcrypt.hashSync("pm123", 10)
+        }
+      ];
+      await prisma.user.createMany({ data: usersToSeed });
+    }
+  } catch (err) {
+    console.error("Prisma ensurePostgresUsers error", err);
+  }
+}
+
+async function findUserByEmail(email: string) {
+  if (prisma) {
+    try {
+      await ensurePostgresUsers();
+      const u = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+      if (u) {
+        return {
+          id: u.id,
+          email: u.email,
+          password: u.password,
+          name: u.name,
+          role: u.role
+        };
+      }
+    } catch (err) {
+      console.error("Prisma findUserByEmail failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  return db.users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
+}
+
+async function createUser(userData: any) {
+  if (prisma) {
+    try {
+      const created = await prisma.user.create({
+        data: {
+          email: userData.email,
+          password: userData.password,
+          name: userData.name,
+          role: userData.role
+        }
+      });
+      return {
+        id: created.id,
+        email: created.email,
+        name: created.name,
+        role: created.role
+      };
+    } catch (err) {
+      console.error("Prisma createUser failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  db.users.push(userData);
+  saveDBState(db);
+  return userData;
+}
+
+async function getDonations() {
+  if (prisma) {
+    try {
+      const donations = await prisma.donation.findMany({
+        orderBy: { createdAt: "desc" }
+      });
+      return donations.map(d => ({
+        id: d.id,
+        donorName: d.donorName,
+        isAnonymous: d.isAnonymous,
+        amount: Number(d.amount),
+        date: d.date.toISOString(),
+        paymentMethod: mapFromPrismaPaymentMethod(d.paymentMethod),
+        transferProofUrl: d.transferProofUrl,
+        status: d.status
+      }));
+    } catch (err) {
+      console.error("Prisma getDonations failed, falling back", err);
+    }
+  }
+  return getDBState().donations;
+}
+
+async function addDonation(donationData: any) {
+  if (prisma) {
+    try {
+      const created = await prisma.donation.create({
+        data: {
+          donorName: donationData.donorName,
+          isAnonymous: donationData.isAnonymous,
+          amount: donationData.amount,
+          paymentMethod: mapToPrismaPaymentMethod(donationData.paymentMethod),
+          transferProofUrl: donationData.transferProofUrl,
+          status: donationData.status,
+          date: new Date(donationData.date)
+        }
+      });
+      return {
+        id: created.id,
+        donorName: created.donorName,
+        isAnonymous: created.isAnonymous,
+        amount: Number(created.amount),
+        date: created.date.toISOString(),
+        paymentMethod: mapFromPrismaPaymentMethod(created.paymentMethod),
+        transferProofUrl: created.transferProofUrl,
+        status: created.status
+      };
+    } catch (err) {
+      console.error("Prisma addDonation failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  db.donations.unshift(donationData);
+  saveDBState(db);
+  return donationData;
+}
+
+async function approveDonationInDb(id: string) {
+  if (prisma) {
+    try {
+      const updated = await prisma.donation.update({
+        where: { id },
+        data: {
+          status: "APPROVED",
+          approvedAt: new Date()
+        }
+      });
+      return {
+        id: updated.id,
+        donorName: updated.donorName,
+        isAnonymous: updated.isAnonymous,
+        amount: Number(updated.amount),
+        date: updated.date.toISOString(),
+        paymentMethod: mapFromPrismaPaymentMethod(updated.paymentMethod),
+        transferProofUrl: updated.transferProofUrl,
+        status: updated.status
+      };
+    } catch (err) {
+      console.error("Prisma approveDonation failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  const index = db.donations.findIndex((d: any) => d.id === id);
+  if (index !== -1) {
+    db.donations[index].status = "APPROVED";
+    saveDBState(db);
+    return db.donations[index];
+  }
+  return null;
+}
+
+async function getExpenditures() {
+  if (prisma) {
+    try {
+      const expenditures = await prisma.expenditure.findMany({
+        orderBy: { date: "desc" }
+      });
+      return expenditures.map(e => ({
+        id: e.id,
+        itemName: e.itemName,
+        category: mapFromPrismaExpenditureCategory(e.category),
+        volume: Number(e.volume),
+        unit: e.unit,
+        unitPrice: Number(e.unitPrice),
+        totalPrice: Number(e.totalPrice),
+        storeName: e.storeName,
+        receiptUrl: e.receiptUrl,
+        inputtedBy: e.inputtedBy,
+        date: e.date.toISOString()
+      }));
+    } catch (err) {
+      console.error("Prisma getExpenditures failed, falling back", err);
+    }
+  }
+  return getDBState().expenditures;
+}
+
+async function addExpenditure(expData: any) {
+  if (prisma) {
+    try {
+      const created = await prisma.expenditure.create({
+        data: {
+          itemName: expData.itemName,
+          category: mapToPrismaExpenditureCategory(expData.category),
+          volume: expData.volume,
+          unit: expData.unit,
+          unitPrice: expData.unitPrice,
+          totalPrice: expData.totalPrice,
+          storeName: expData.storeName,
+          receiptUrl: expData.receiptUrl,
+          inputtedBy: expData.inputtedBy,
+          date: new Date(expData.date)
+        }
+      });
+      return {
+        id: created.id,
+        itemName: created.itemName,
+        category: mapFromPrismaExpenditureCategory(created.category),
+        volume: Number(created.volume),
+        unit: created.unit,
+        unitPrice: Number(created.unitPrice),
+        totalPrice: Number(created.totalPrice),
+        storeName: created.storeName,
+        receiptUrl: created.receiptUrl,
+        inputtedBy: created.inputtedBy,
+        date: created.date.toISOString()
+      };
+    } catch (err) {
+      console.error("Prisma addExpenditure failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  db.expenditures.unshift(expData);
+  const matchedBudgetIndex = db.budgets.findIndex((b: RABItem) => 
+    b.category.toLowerCase().startsWith(expData.category.toLowerCase().substring(0,4)) ||
+    b.itemName.toLowerCase().includes(expData.itemName.toLowerCase())
+  );
+  if (matchedBudgetIndex !== -1) {
+    db.budgets[matchedBudgetIndex].spentAmount += expData.totalPrice;
+  }
+  saveDBState(db);
+  return expData;
+}
+
+async function getBudgets() {
+  if (prisma) {
+    try {
+      await ensurePostgresBudgets();
+      const budgets = await prisma.budget.findMany();
+      const expenditures = await prisma.expenditure.findMany();
+
+      return budgets.map(b => {
+        const spent = expenditures
+          .filter(e => mapFromPrismaExpenditureCategory(e.category).toLowerCase().substring(0,4) === b.category.toLowerCase().substring(0,4) || b.itemName.toLowerCase().includes(e.itemName.toLowerCase()))
+          .reduce((sum, e) => sum + Number(e.totalPrice), 0);
+
+        return {
+          id: b.id,
+          itemName: b.itemName,
+          category: b.category as any,
+          targetAmount: Number(b.targetAmount),
+          spentAmount: spent
+        };
+      });
+    } catch (err) {
+      console.error("Prisma getBudgets failed, falling back", err);
+    }
+  }
+  return getDBState().budgets;
+}
+
+async function getProgress() {
+  if (prisma) {
+    try {
+      const progress = await prisma.physicalProgress.findMany({
+        orderBy: { timelineDate: "asc" }
+      });
+      return progress.map(p => ({
+        id: p.id,
+        percentage: p.percentage,
+        description: p.description,
+        timelineDate: p.timelineDate.toISOString(),
+        photoUrls: p.photoUrls
+      }));
+    } catch (err) {
+      console.error("Prisma getProgress failed, falling back", err);
+    }
+  }
+  return getDBState().progress;
+}
+
+async function addProgress(progressData: any) {
+  if (prisma) {
+    try {
+      const created = await prisma.physicalProgress.create({
+        data: {
+          percentage: progressData.percentage,
+          description: progressData.description,
+          photoUrls: progressData.photoUrls,
+          timelineDate: new Date(progressData.timelineDate)
+        }
+      });
+      return {
+        id: created.id,
+        percentage: created.percentage,
+        description: created.description,
+        timelineDate: created.timelineDate.toISOString(),
+        photoUrls: created.photoUrls
+      };
+    } catch (err) {
+      console.error("Prisma addProgress failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  db.progress.push(progressData);
+  saveDBState(db);
+  return progressData;
+}
+
+async function getAuditLogs() {
+  if (prisma) {
+    try {
+      const logs = await prisma.auditLog.findMany({
+        orderBy: { timestamp: "desc" }
+      });
+      return logs.map(l => ({
+        id: l.id,
+        timestamp: l.timestamp.toISOString(),
+        action: l.action as any,
+        tableName: l.tableName as any,
+        recordId: l.recordId,
+        changedBy: l.changedBy,
+        details: l.details
+      }));
+    } catch (err) {
+      console.error("Prisma getAuditLogs failed, falling back", err);
+    }
+  }
+  return getDBState().auditLogs;
+}
+
+async function addAuditLog(logData: any) {
+  if (prisma) {
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: logData.action,
+          tableName: logData.tableName,
+          recordId: logData.recordId,
+          changedBy: logData.changedBy,
+          details: logData.details,
+          timestamp: new Date(logData.timestamp)
+        }
+      });
+      return;
+    } catch (err) {
+      console.error("Prisma addAuditLog failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  db.auditLogs.unshift(logData);
+  saveDBState(db);
+}
+
 // Global Authentication JWT Middleware
 function authenticateToken(req: any, res: any, next: any) {
   const authHeader = req.headers["authorization"];
@@ -410,7 +830,7 @@ function requireRole(allowedRoles: string[]) {
 
 // REST APIs
 // 0. Authentication Endpoints
-app.post("/api/auth/register", (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
   const { email, password, name, role } = req.body;
 
   if (!email || !password || !name) {
@@ -418,57 +838,62 @@ app.post("/api/auth/register", (req, res) => {
   }
 
   const assignedRole = role && ["ADMIN", "TREASURER", "PROJECT_MANAGER"].includes(role) ? role : "TREASURER";
-  const db = getDBState();
 
-  const userExists = db.users.some((u: any) => u.email.toLowerCase() === email.toLowerCase());
-  if (userExists) {
-    return res.status(400).json({ error: "User with this email already registered." });
+  try {
+    const existingUser = await findUserByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ error: "User with this email already registered." });
+    }
+
+    const newUser = await createUser({
+      id: `user-${Date.now()}`,
+      email: email.toLowerCase(),
+      password: bcrypt.hashSync(password, 10),
+      name,
+      role: assignedRole,
+      createdAt: new Date().toISOString()
+    });
+
+    // Sign token
+    const tokenPayload = { id: newUser.id, email: newUser.email, role: newUser.role, name: newUser.name };
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
+
+    res.status(201).json({
+      token,
+      user: { id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role }
+    });
+  } catch (error) {
+    console.error("Register error:", error);
+    res.status(500).json({ error: "Registration failed." });
   }
-
-  const newUser = {
-    id: `user-${Date.now()}`,
-    email: email.toLowerCase(),
-    password: bcrypt.hashSync(password, 10),
-    name,
-    role: assignedRole,
-    createdAt: new Date().toISOString()
-  };
-
-  db.users.push(newUser);
-  saveDBState(db);
-
-  // Sign token
-  const tokenPayload = { id: newUser.id, email: newUser.email, role: newUser.role, name: newUser.name };
-  const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
-
-  res.status(201).json({
-    token,
-    user: { id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role }
-  });
 });
 
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: "Email dan password wajib diisi." });
   }
 
-  const db = getDBState();
-  const user = db.users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
+  try {
+    const user = await findUserByEmail(email);
 
-  if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.status(401).json({ error: "Email atau kata sandi Anda salah." });
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      return res.status(401).json({ error: "Email atau kata sandi Anda salah." });
+    }
+
+    // Sign token
+    const tokenPayload = { id: user.id, email: user.email, role: user.role, name: user.name };
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
+
+    res.json({
+      token,
+      user: { id: user.id, email: user.email, name: user.name, role: user.role }
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Login failed." });
   }
-
-  // Sign token
-  const tokenPayload = { id: user.id, email: user.email, role: user.role, name: user.name };
-  const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
-
-  res.json({
-    token,
-    user: { id: user.id, email: user.email, name: user.name, role: user.role }
-  });
 });
 
 app.get("/api/auth/me", authenticateToken, (req: any, res) => {
@@ -485,57 +910,72 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
 });
 
 // 1. Calculations & Summaries (TAMPER-PROOF BALANCE ENGINE)
-app.get("/api/financial-summary", (req, res) => {
-  const db = getDBState();
-  
-  // Calculate dynamically from full ledger history to satisfy the tamper-proof formula requirement.
-  const approvedDonationsSum = db.donations
-    .filter((d: Donation) => d.status === "APPROVED")
-    .reduce((sum: number, d: Donation) => sum + d.amount, 0);
+app.get("/api/financial-summary", async (req, res) => {
+  try {
+    const [donations, expenditures, budgets, progress] = await Promise.all([
+      getDonations(),
+      getExpenditures(),
+      getBudgets(),
+      getProgress()
+    ]);
+    
+    // Calculate dynamically from full ledger history to satisfy the tamper-proof formula requirement.
+    const approvedDonationsSum = donations
+      .filter((d: Donation) => d.status === "APPROVED")
+      .reduce((sum: number, d: Donation) => sum + d.amount, 0);
 
-  const expendituresSum = db.expenditures
-    .reduce((sum: number, e: Expenditure) => sum + e.totalPrice, 0);
+    const expendituresSum = expenditures
+      .reduce((sum: number, e: Expenditure) => sum + e.totalPrice, 0);
 
-  const currentCashBalance = approvedDonationsSum - expendituresSum;
+    const currentCashBalance = approvedDonationsSum - expendituresSum;
 
-  const totalRABTarget = db.budgets
-    .reduce((sum: number, b: RABItem) => sum + b.targetAmount, 0);
+    const totalRABTarget = budgets
+      .reduce((sum: number, b: RABItem) => sum + b.targetAmount, 0);
 
-  // Get current physical progress percentage (latest logging)
-  const currentProgressPercent = db.progress.length > 0 
-    ? db.progress[db.progress.length - 1].percentage 
-    : 0;
+    // Get current physical progress percentage (latest logging)
+    const currentProgressPercent = progress.length > 0 
+      ? progress[progress.length - 1].percentage 
+      : 0;
 
-  res.json({
-    totalRaised: approvedDonationsSum,
-    totalRABTarget,
-    currentCashBalance,
-    totalExpenditures: expendituresSum,
-    physicalProgressPercent: currentProgressPercent,
-    // Add categories analysis for charts
-    expendituresByCategory: {
-      Material: db.expenditures.filter((e: any) => e.category === "Material").reduce((s: number, e: any) => s + e.totalPrice, 0),
-      Labor: db.expenditures.filter((e: any) => e.category === "Labor").reduce((s: number, e: any) => s + e.totalPrice, 0),
-      Equipment: db.expenditures.filter((e: any) => e.category === "Equipment").reduce((s: number, e: any) => s + e.totalPrice, 0),
-      "Permit/Admin": db.expenditures.filter((e: any) => e.category === "Permit/Admin").reduce((s: number, e: any) => s + e.totalPrice, 0),
-      Other: db.expenditures.filter((e: any) => e.category === "Other").reduce((s: number, e: any) => s + e.totalPrice, 0)
-    },
-    donationsByPayment: {
-      "Bank Transfer": db.donations.filter((d: any) => d.status === "APPROVED" && d.paymentMethod === "Bank Transfer").reduce((s: number, d: any) => s + d.amount, 0),
-      "E-Wallet": db.donations.filter((d: any) => d.status === "APPROVED" && d.paymentMethod === "E-Wallet").reduce((s: number, d: any) => s + d.amount, 0),
-      "Cash": db.donations.filter((d: any) => d.status === "APPROVED" && d.paymentMethod === "Cash").reduce((s: number, d: any) => s + d.amount, 0),
-      "Crypto": db.donations.filter((d: any) => d.status === "APPROVED" && d.paymentMethod === "Crypto").reduce((s: number, d: any) => s + d.amount, 0),
-    }
-  });
+    res.json({
+      totalRaised: approvedDonationsSum,
+      totalRABTarget,
+      currentCashBalance,
+      totalExpenditures: expendituresSum,
+      physicalProgressPercent: currentProgressPercent,
+      // Add categories analysis for charts
+      expendituresByCategory: {
+        Material: expenditures.filter((e: any) => e.category === "Material").reduce((s: number, e: any) => s + e.totalPrice, 0),
+        Labor: expenditures.filter((e: any) => e.category === "Labor").reduce((s: number, e: any) => s + e.totalPrice, 0),
+        Equipment: expenditures.filter((e: any) => e.category === "Equipment").reduce((s: number, e: any) => s + e.totalPrice, 0),
+        "Permit/Admin": expenditures.filter((e: any) => e.category === "Permit/Admin").reduce((s: number, e: any) => s + e.totalPrice, 0),
+        Other: expenditures.filter((e: any) => e.category === "Other").reduce((s: number, e: any) => s + e.totalPrice, 0)
+      },
+      donationsByPayment: {
+        "Bank Transfer": donations.filter((d: any) => d.status === "APPROVED" && d.paymentMethod === "Bank Transfer").reduce((s: number, d: any) => s + d.amount, 0),
+        "E-Wallet": donations.filter((d: any) => d.status === "APPROVED" && d.paymentMethod === "E-Wallet").reduce((s: number, d: any) => s + d.amount, 0),
+        "Cash": donations.filter((d: any) => d.status === "APPROVED" && d.paymentMethod === "Cash").reduce((s: number, d: any) => s + d.amount, 0),
+        "Crypto": donations.filter((d: any) => d.status === "APPROVED" && d.paymentMethod === "Crypto").reduce((s: number, d: any) => s + d.amount, 0),
+      }
+    });
+  } catch (error) {
+    console.error("Financial summary calculation error:", error);
+    res.status(500).json({ error: "Failed to calculate financial summary." });
+  }
 });
 
 // 2. Donations Endpoints
-app.get("/api/donations", (req, res) => {
-  const db = getDBState();
-  res.json(db.donations);
+app.get("/api/donations", async (req, res) => {
+  try {
+    const list = await getDonations();
+    res.json(list);
+  } catch (err) {
+    console.error("GET donations error:", err);
+    res.status(500).json({ error: "Failed to retrieve donations." });
+  }
 });
 
-app.post("/api/donations", (req, res) => {
+app.post("/api/donations", async (req, res) => {
   const { donorName, isAnonymous, amount, paymentMethod, transferProofUrl, approveDirectly } = req.body;
 
   if (!donorName || !amount || !paymentMethod) {
@@ -551,11 +991,11 @@ app.post("/api/donations", (req, res) => {
     return res.status(400).json({ error: "Strict Accountability: Transfer proof Image URL/string is mandatory to log a donation." });
   }
 
-  const db = getDBState();
   const isApproved = approveDirectly ? "APPROVED" : "PENDING";
+  const donationId = `don-${Date.now()}`;
   
-  const newDonation: Donation = {
-    id: `don-${Date.now()}`,
+  const donationData = {
+    id: donationId,
     donorName: isAnonymous ? "Anonymous" : donorName,
     isAnonymous: !!isAnonymous,
     amount: Number(amount),
@@ -565,68 +1005,84 @@ app.post("/api/donations", (req, res) => {
     status: isApproved
   };
 
-  db.donations.unshift(newDonation);
+  try {
+    const savedDonation = await addDonation(donationData);
 
-  // Auto-log audit record
-  const newAudit: AuditLog = {
-    id: `log-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    action: "CREATE",
-    tableName: "Donation",
-    recordId: newDonation.id,
-    changedBy: approveDirectly ? "Bendahara" : "Publik/Mandiri",
-    details: `${isApproved === 'APPROVED' ? 'Disetujui' : 'Tertunda'} Donasi masuk: Rp ${newDonation.amount.toLocaleString('id-ID')} oleh ${newDonation.donorName}. Bukti transfer: terverifikasi.`
-  };
-  
-  db.auditLogs.unshift(newAudit);
-  saveDBState(db);
+    // Auto-log audit record
+    const auditId = `log-${Date.now()}`;
+    const auditData = {
+      id: auditId,
+      timestamp: new Date().toISOString(),
+      action: "CREATE" as const,
+      tableName: "Donation" as const,
+      recordId: donationId,
+      changedBy: approveDirectly ? "Bendahara" : "Publik/Mandiri",
+      details: `${isApproved === 'APPROVED' ? 'Disetujui' : 'Tertunda'} Donasi masuk: Rp ${savedDonation.amount.toLocaleString('id-ID')} oleh ${savedDonation.donorName}. Bukti transfer: terverifikasi.`
+    };
+    
+    await addAuditLog(auditData);
 
-  res.status(201).json({ donation: newDonation, audit: newAudit });
+    res.status(201).json({ donation: savedDonation, audit: auditData });
+  } catch (err) {
+    console.error("POST donations error:", err);
+    res.status(500).json({ error: "Failed to submit donation." });
+  }
 });
 
-app.post("/api/donations/:id/approve", authenticateToken, requireRole(["ADMIN", "TREASURER"]), (req, res) => {
+app.post("/api/donations/:id/approve", authenticateToken, requireRole(["ADMIN", "TREASURER"]), async (req, res) => {
   const { id } = req.params;
   const operator = (req as any).user;
 
-  const db = getDBState();
-  const donationIndex = db.donations.findIndex((d: Donation) => d.id === id);
+  try {
+    const list = await getDonations();
+    const donation = list.find((d: Donation) => d.id === id);
 
-  if (donationIndex === -1) {
-    return res.status(404).json({ error: "Donation record not found." });
+    if (!donation) {
+      return res.status(404).json({ error: "Donation record not found." });
+    }
+
+    if (donation.status === "APPROVED") {
+      return res.status(400).json({ error: "Donation is already approved." });
+    }
+
+    const updatedDonation = await approveDonationInDb(id);
+    if (!updatedDonation) {
+      return res.status(500).json({ error: "Failed to approve donation." });
+    }
+
+    // Record validation audit trail
+    const auditId = `log-${Date.now()}`;
+    const auditData = {
+      id: auditId,
+      timestamp: new Date().toISOString(),
+      action: "APPROVE" as const,
+      tableName: "Donation" as const,
+      recordId: id,
+      changedBy: operator.name,
+      details: `Menyetujui kontribusi sebesar Rp ${updatedDonation.amount.toLocaleString('id-ID')} dari '${updatedDonation.donorName}'. Bukti transfer terverifikasi oleh ${operator.role}.`
+    };
+
+    await addAuditLog(auditData);
+
+    res.json({ donation: updatedDonation, audit: auditData });
+  } catch (err) {
+    console.error("Approve donation error:", err);
+    res.status(500).json({ error: "Failed to approve donation." });
   }
-
-  const donation = db.donations[donationIndex];
-  if (donation.status === "APPROVED") {
-    return res.status(400).json({ error: "Donation is already approved." });
-  }
-
-  donation.status = "APPROVED";
-  db.donations[donationIndex] = donation;
-
-  // Record validation audit trail
-  const newAudit: AuditLog = {
-    id: `log-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    action: "APPROVE",
-    tableName: "Donation",
-    recordId: donation.id,
-    changedBy: operator.name,
-    details: `Menyetujui kontribusi sebesar Rp ${donation.amount.toLocaleString('id-ID')} dari '${donation.donorName}'. Bukti transfer terverifikasi oleh ${operator.role}.`
-  };
-
-  db.auditLogs.unshift(newAudit);
-  saveDBState(db);
-
-  res.json({ donation, audit: newAudit });
 });
 
 // 3. Expenditures Endpoints (Strict validation for invoices)
-app.get("/api/expenditures", (req, res) => {
-  const db = getDBState();
-  res.json(db.expenditures);
+app.get("/api/expenditures", async (req, res) => {
+  try {
+    const list = await getExpenditures();
+    res.json(list);
+  } catch (err) {
+    console.error("GET expenditures error:", err);
+    res.status(500).json({ error: "Failed to retrieve expenditures." });
+  }
 });
 
-app.post("/api/expenditures", authenticateToken, requireRole(["ADMIN", "TREASURER"]), (req, res) => {
+app.post("/api/expenditures", authenticateToken, requireRole(["ADMIN", "TREASURER"]), async (req, res) => {
   const { itemName, category, volume, unit, unitPrice, storeName, receiptUrl } = req.body;
   const operator = (req as any).user;
 
@@ -644,11 +1100,11 @@ app.post("/api/expenditures", authenticateToken, requireRole(["ADMIN", "TREASURE
     return res.status(400).json({ error: "Strict Accountability Validation Block: Expenditures CANNOT be saved without uploading a receipt/invoice image URL." });
   }
 
-  const db = getDBState();
   const calculatedTotal = Number(volume) * Number(unitPrice);
+  const expenditureId = `exp-${Date.now()}`;
 
-  const newExpenditure: Expenditure = {
-    id: `exp-${Date.now()}`,
+  const expenditureData = {
+    id: expenditureId,
     itemName,
     category,
     volume: Number(volume),
@@ -661,41 +1117,42 @@ app.post("/api/expenditures", authenticateToken, requireRole(["ADMIN", "TREASURE
     date: new Date().toISOString()
   };
 
-  db.expenditures.unshift(newExpenditure);
+  try {
+    const savedExpenditure = await addExpenditure(expenditureData);
 
-  // Map to corresponding RABBudget item to register actual expenditure
-  const matchedBudgetIndex = db.budgets.findIndex((b: RABItem) => 
-    b.category.toLowerCase().startsWith(category.toLowerCase().substring(0,4)) ||
-    b.itemName.toLowerCase().includes(itemName.toLowerCase())
-  );
-  if (matchedBudgetIndex !== -1) {
-    db.budgets[matchedBudgetIndex].spentAmount += calculatedTotal;
+    // Audit record creation
+    const auditId = `log-${Date.now()}`;
+    const auditData = {
+      id: auditId,
+      timestamp: new Date().toISOString(),
+      action: "CREATE" as const,
+      tableName: "Expenditure" as const,
+      recordId: expenditureId,
+      changedBy: operator.name,
+      details: `Pembelian ${volume} ${unit} dari '${itemName}' seharga total Rp ${calculatedTotal.toLocaleString('id-ID')} di '${storeName}' diinput oleh ${operator.name} (${operator.role}).`
+    };
+
+    await addAuditLog(auditData);
+
+    res.status(201).json({ expenditure: savedExpenditure, audit: auditData });
+  } catch (err) {
+    console.error("POST expenditure error:", err);
+    res.status(500).json({ error: "Failed to record expenditure." });
   }
-
-  // Audit record creation
-  const newAudit: AuditLog = {
-    id: `log-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    action: "CREATE",
-    tableName: "Expenditure",
-    recordId: newExpenditure.id,
-    changedBy: operator.name,
-    details: `Pembelian ${volume} ${unit} dari '${itemName}' seharga total Rp ${calculatedTotal.toLocaleString('id-ID')} di '${storeName}' diinput oleh ${operator.name} (${operator.role}).`
-  };
-
-  db.auditLogs.unshift(newAudit);
-  saveDBState(db);
-
-  res.status(201).json({ expenditure: newExpenditure, audit: newAudit });
 });
 
 // 4. Physical Progress Endpoints (Project Manager Module)
-app.get("/api/progress", (req, res) => {
-  const db = getDBState();
-  res.json(db.progress);
+app.get("/api/progress", async (req, res) => {
+  try {
+    const list = await getProgress();
+    res.json(list);
+  } catch (err) {
+    console.error("GET progress error:", err);
+    res.status(500).json({ error: "Failed to retrieve progress." });
+  }
 });
 
-app.post("/api/progress", authenticateToken, requireRole(["ADMIN", "PROJECT_MANAGER"]), (req, res) => {
+app.post("/api/progress", authenticateToken, requireRole(["ADMIN", "PROJECT_MANAGER"]), async (req, res) => {
   const { percentage, description, photoUrl } = req.body;
   const operator = (req as any).user;
 
@@ -708,43 +1165,53 @@ app.post("/api/progress", authenticateToken, requireRole(["ADMIN", "PROJECT_MANA
     return res.status(400).json({ error: "Percentage must be an integer between 0 and 100." });
   }
 
-  const db = getDBState();
-  
   const progressPhotos = photoUrl && photoUrl.trim() !== "" ? [photoUrl] : [
     "https://images.unsplash.com/photo-1590674899484-13aa0d13301a?w=500&auto=format&fit=crop" // standard placeholder
   ];
 
-  const newProgress: PhysicalProgress = {
-    id: `prog-${Date.now()}`,
+  const progressId = `prog-${Date.now()}`;
+
+  const progressData = {
+    id: progressId,
     percentage: numericPercent,
     description,
     timelineDate: new Date().toISOString(),
     photoUrls: progressPhotos
   };
 
-  db.progress.push(newProgress);
+  try {
+    const savedProgress = await addProgress(progressData);
 
-  // Logging physical progress audit trail
-  const newAudit: AuditLog = {
-    id: `log-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    action: "CREATE",
-    tableName: "PhysicalProgress",
-    recordId: newProgress.id,
-    changedBy: operator.name,
-    details: `Kemajuan fisik proyek diperbarui ke ${numericPercent}% oleh ${operator.name} (${operator.role}). Keterangan: ${description}`
-  };
+    // Logging physical progress audit trail
+    const auditId = `log-${Date.now()}`;
+    const auditData = {
+      id: auditId,
+      timestamp: new Date().toISOString(),
+      action: "CREATE" as const,
+      tableName: "PhysicalProgress" as const,
+      recordId: progressId,
+      changedBy: operator.name,
+      details: `Kemajuan fisik proyek diperbarui ke ${numericPercent}% oleh ${operator.name} (${operator.role}). Keterangan: ${description}`
+    };
 
-  db.auditLogs.unshift(newAudit);
-  saveDBState(db);
+    await addAuditLog(auditData);
 
-  res.status(201).json({ progress: newProgress, audit: newAudit });
+    res.status(201).json({ progress: savedProgress, audit: auditData });
+  } catch (err) {
+    console.error("POST progress error:", err);
+    res.status(500).json({ error: "Failed to post progress update." });
+  }
 });
 
 // 5. Audit logs endpoint
-app.get("/api/audit-logs", (req, res) => {
-  const db = getDBState();
-  res.json(db.auditLogs);
+app.get("/api/audit-logs", async (req, res) => {
+  try {
+    const list = await getAuditLogs();
+    res.json(list);
+  } catch (err) {
+    console.error("GET audit logs error:", err);
+    res.status(500).json({ error: "Failed to retrieve audit logs." });
+  }
 });
 
 // 6. Project Architecture structure for display
@@ -808,6 +1275,7 @@ app.get("/api/folder-structure", (req, res) => {
 // Setup development devServer or production asset pipelines
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
