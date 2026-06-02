@@ -13,7 +13,7 @@ import {
   PhysicalProgress, 
   RABItem, 
   AuditLog 
-} from "./src/types"; // Standard TS/JS resolver
+} from "./src/types.js"; // Standard TS/JS resolver
 
 export const app = express();
 
