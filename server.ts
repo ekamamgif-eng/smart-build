@@ -14,7 +14,7 @@ import {
   AuditLog 
 } from "./src/types.js"; // Standard TS/JS resolver
 
-const app = express();
+export const app = express();
 const PORT = 3000;
 
 // Resolve __dirname since we are in ES Module context
@@ -826,4 +826,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
