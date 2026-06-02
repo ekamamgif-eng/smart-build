@@ -13,7 +13,7 @@ import {
   PhysicalProgress, 
   RABItem, 
   AuditLog 
-} from "./src/types.js"; // Standard TS/JS resolver
+} from "./src/types"; // Standard TS/JS resolver
 
 export const app = express();
 
@@ -41,39 +41,23 @@ async function getPrismaClient() {
 
 const PORT = 3000;
 
-// Resolve __dirname safely supporting both ESM and CJS contexts (especially for Vercel environment)
-let __filename = "";
-let __dirname = "";
+// Resolve local directory path constants safely for both CommonJS and ES Module environments
+const __dirname = process.cwd();
+const __filename = path.join(__dirname, "server.ts");
 
-try {
-  if (import.meta && import.meta.url) {
-    __filename = fileURLToPath(import.meta.url);
-    __dirname = path.dirname(__filename);
-  }
-} catch (e) {
-  // Ignore in case of environments where import.meta.url throws
-}
-
-if (!__dirname) {
-  try {
-    // Use fallbacks for CommonJS context
-    __dirname = (globalThis as any).__dirname || __dirname;
-    __filename = (globalThis as any).__filename || __filename;
-  } catch (e) {}
-}
-
-if (!__dirname) {
-  __dirname = process.cwd();
-  __filename = path.join(__dirname, "server.ts");
-}
-
-let DB_FILE_PATH = path.join(__dirname, "db.json");
+let DB_FILE_PATH = path.join(process.cwd(), "db.json");
 if (process.env.VERCEL) {
   const tempDbPath = "/tmp/db.json";
   try {
     if (!fs.existsSync(tempDbPath)) {
       if (fs.existsSync(DB_FILE_PATH)) {
         fs.copyFileSync(DB_FILE_PATH, tempDbPath);
+      } else {
+        // Safe check for relative fallback paths
+        const fallbackPath = path.join(__dirname, "db.json");
+        if (fs.existsSync(fallbackPath)) {
+          fs.copyFileSync(fallbackPath, tempDbPath);
+        }
       }
     }
   } catch (err) {

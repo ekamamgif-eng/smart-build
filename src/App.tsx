@@ -1613,8 +1613,11 @@ $$ LANGUAGE plpgsql;`}
             Secure Fullstack Architecture Blueprint designed specifically for NeonDB & Postgres triggers. <br />
             Created for verified public trust, accountability, and real-time physical development summaries.
           </p>
-          <div className="text-xxs text-slate-600">
-            © 2026 SmartBuild Initiative. Standard GPL-v2 License. Auditable code distribution.
+          <div className="text-xxs text-slate-600 flex flex-col sm:flex-row justify-center items-center gap-2">
+            <span>© 2026 SmartBuild Initiative. Standard GPL-v2 License. Auditable code distribution.</span>
+            <span className="bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-2 py-0.5 rounded font-mono text-xxs font-medium">
+              v1.2.8-latest (Deployed: 2026-06-02)
+            </span>
           </div>
         </div>
       </footer>
