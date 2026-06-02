@@ -13,6 +13,11 @@
       }
     }
   ],
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "node_modules/.prisma/client/libquery_engine-*"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",

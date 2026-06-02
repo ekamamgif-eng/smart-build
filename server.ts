@@ -18,9 +18,31 @@ export const app = express();
 const prisma = process.env.DATABASE_URL ? new PrismaClient() : null;
 const PORT = 3000;
 
-// Resolve __dirname since we are in ES Module context
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Resolve __dirname safely supporting both ESM and CJS contexts (especially for Vercel environment)
+let __filename = "";
+let __dirname = "";
+
+try {
+  if (import.meta && import.meta.url) {
+    __filename = fileURLToPath(import.meta.url);
+    __dirname = path.dirname(__filename);
+  }
+} catch (e) {
+  // Ignore in case of environments where import.meta.url throws
+}
+
+if (!__dirname) {
+  try {
+    // Use fallbacks for CommonJS context
+    __dirname = (globalThis as any).__dirname || __dirname;
+    __filename = (globalThis as any).__filename || __filename;
+  } catch (e) {}
+}
+
+if (!__dirname) {
+  __dirname = process.cwd();
+  __filename = path.join(__dirname, "server.ts");
+}
 
 const DB_FILE_PATH = path.join(__dirname, "db.json");
 const UPLOADS_DIR = process.env.VERCEL ? "/tmp" : path.join(__dirname, "uploads");
