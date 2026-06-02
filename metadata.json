@@ -1,0 +1,6 @@
+{
+  "name": "SmartBuild",
+  "description": "House of Worship project management and real-time financial transparency dashboard built for public donors, treasurers, and project managers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

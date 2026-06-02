@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  TREASURER
+  PROJECT_MANAGER
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  E_WALLET
+  CASH
+  CRYPTO
+}
+
+enum DonationStatus {
+  PENDING
+  APPROVED
+}
+
+enum ExpenditureCategory {
+  MATERIAL
+  LABOR
+  EQUIPMENT
+  PERMIT_ADMIN
+  OTHER
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Hashed password
+  name      String
+  role      Role     @default(TREASURER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  expenditures   Expenditure[]
+  auditLogs      AuditLog[]
+}
+
+model Budget {
+  id           String   @id @default(uuid())
+  itemName     String
+  category     String   // e.g. "Foundation", "Structure", "Roofing", "MEP", "Operational"
+  targetAmount Decimal  @db.Decimal(12, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Donation {
+  id               String         @id @default(uuid())
+  donorName        String
+  isAnonymous      Boolean        @default(false)
+  amount           Decimal        @db.Decimal(12, 2)
+  date             DateTime       @default(now())
+  paymentMethod    PaymentMethod
+  transferProofUrl String         // Required for audit-readiness
+  status           DonationStatus @default(PENDING)
+  approvedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Expenditure {
+  id          String              @id @default(uuid())
+  itemName    String
+  category    ExpenditureCategory
+  volume      Decimal             @db.Decimal(10, 2)
+  unit        String              // e.g. "m3", "kg", "pcs", "days"
+  unitPrice   Decimal             @db.Decimal(12, 2)
+  totalPrice  Decimal             @db.Decimal(12, 2) // Auto-validated: volume * unitPrice
+  storeName   String
+  receiptUrl  String              // STRICT VALIDATION: Expenditure cannot be saved without receipt URL
+  inputtedBy  String              // Links to User.name or User.id
+  userId      String?
+  user        User?               @relation(fields: [userId], references: [id])
+  date        DateTime            @default(now())
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model PhysicalProgress {
+  id           String   @id @default(uuid())
+  percentage   Int      // 0 to 100
+  description  String
+  timelineDate DateTime @default(now())
+  photoUrls    String[] // Array of photographic updates
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  timestamp DateTime @default(now())
+  action    String   // "INSERT", "UPDATE", "DELETE", "APPROVE"
+  tableName String   // "Donation", "Expenditure", "PhysicalProgress", "Budget"
+  recordId  String
+  changedBy String   // User name or email
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  details   String   // Textual description of what changed (old values vs new values)
+}
