@@ -15,7 +15,17 @@ import {
 } from "./src/types.js"; // Standard TS/JS resolver
 
 export const app = express();
-const prisma = process.env.DATABASE_URL ? new PrismaClient() : null;
+
+let prisma: PrismaClient | null = null;
+if (process.env.DATABASE_URL) {
+  try {
+    prisma = new PrismaClient();
+  } catch (err) {
+    console.error("PrismaClient initialization failed under startup, disabling database integration:", err);
+    prisma = null;
+  }
+}
+
 const PORT = 3000;
 
 // Resolve __dirname safely supporting both ESM and CJS contexts (especially for Vercel environment)
@@ -44,7 +54,20 @@ if (!__dirname) {
   __filename = path.join(__dirname, "server.ts");
 }
 
-const DB_FILE_PATH = path.join(__dirname, "db.json");
+let DB_FILE_PATH = path.join(__dirname, "db.json");
+if (process.env.VERCEL) {
+  const tempDbPath = "/tmp/db.json";
+  try {
+    if (!fs.existsSync(tempDbPath)) {
+      if (fs.existsSync(DB_FILE_PATH)) {
+        fs.copyFileSync(DB_FILE_PATH, tempDbPath);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to copy db.json to /tmp", err);
+  }
+  DB_FILE_PATH = tempDbPath;
+}
 const UPLOADS_DIR = process.env.VERCEL ? "/tmp" : path.join(__dirname, "uploads");
 
 // Ensure upload directory exists
