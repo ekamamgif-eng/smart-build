@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
-import { PrismaClient } from "@prisma/client";
+// PrismaClient is dynamically imported on demand to prevent top-level module load crashes in serverless environments
 import { 
   Donation, 
   Expenditure, 
@@ -17,14 +17,26 @@ import {
 
 export const app = express();
 
-let prisma: PrismaClient | null = null;
-if (process.env.DATABASE_URL) {
-  try {
-    prisma = new PrismaClient();
-  } catch (err) {
-    console.error("PrismaClient initialization failed under startup, disabling database integration:", err);
-    prisma = null;
+// Define global prisma lazy-initializer to support zero-downtime offline fallbacks
+let _prisma: any = null;
+let prismaInitialized = false;
+
+async function getPrismaClient() {
+  if (prismaInitialized) return _prisma;
+  if (process.env.DATABASE_URL) {
+    try {
+      const prismaModule = await import("@prisma/client");
+      _prisma = new prismaModule.PrismaClient();
+      console.log("PrismaClient successfully initialized dynamically.");
+    } catch (err) {
+      console.error("PrismaClient initialization failed (lazy load):", err);
+      _prisma = null;
+    }
+  } else {
+    _prisma = null;
   }
+  prismaInitialized = true;
+  return _prisma;
 }
 
 const PORT = 3000;
@@ -461,6 +473,7 @@ function mapFromPrismaExpenditureCategory(cat: string): any {
 }
 
 async function ensurePostgresBudgets() {
+  const prisma = await getPrismaClient();
   if (!prisma) return;
   try {
     const count = await prisma.budget.count();
@@ -478,6 +491,7 @@ async function ensurePostgresBudgets() {
 }
 
 async function ensurePostgresUsers() {
+  const prisma = await getPrismaClient();
   if (!prisma) return;
   try {
     const count = await prisma.user.count();
@@ -513,6 +527,7 @@ async function ensurePostgresUsers() {
 }
 
 async function findUserByEmail(email: string) {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       await ensurePostgresUsers();
@@ -535,6 +550,7 @@ async function findUserByEmail(email: string) {
 }
 
 async function createUser(userData: any) {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const created = await prisma.user.create({
@@ -562,6 +578,7 @@ async function createUser(userData: any) {
 }
 
 async function getDonations() {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const donations = await prisma.donation.findMany({
@@ -585,6 +602,7 @@ async function getDonations() {
 }
 
 async function addDonation(donationData: any) {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const created = await prisma.donation.create({
@@ -619,6 +637,7 @@ async function addDonation(donationData: any) {
 }
 
 async function approveDonationInDb(id: string) {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const updated = await prisma.donation.update({
@@ -653,6 +672,7 @@ async function approveDonationInDb(id: string) {
 }
 
 async function getExpenditures() {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const expenditures = await prisma.expenditure.findMany({
@@ -679,6 +699,7 @@ async function getExpenditures() {
 }
 
 async function addExpenditure(expData: any) {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const created = await prisma.expenditure.create({
@@ -726,6 +747,7 @@ async function addExpenditure(expData: any) {
 }
 
 async function getBudgets() {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       await ensurePostgresBudgets();
@@ -753,6 +775,7 @@ async function getBudgets() {
 }
 
 async function getProgress() {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const progress = await prisma.physicalProgress.findMany({
@@ -773,6 +796,7 @@ async function getProgress() {
 }
 
 async function addProgress(progressData: any) {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const created = await prisma.physicalProgress.create({
@@ -801,6 +825,7 @@ async function addProgress(progressData: any) {
 }
 
 async function getAuditLogs() {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const logs = await prisma.auditLog.findMany({
@@ -823,6 +848,7 @@ async function getAuditLogs() {
 }
 
 async function addAuditLog(logData: any) {
+  const prisma = await getPrismaClient();
   if (prisma) {
     try {
       await prisma.auditLog.create({
