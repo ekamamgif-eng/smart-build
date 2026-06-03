@@ -126,6 +126,10 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [systemInfo, setSystemInfo] = useState<{ version: string; year: number }>({
+    version: "1.2.8",
+    year: new Date().getFullYear(),
+  });
 
   // Project List Edit States
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
@@ -197,16 +201,18 @@ export default function App() {
   };
 
   // Fetch core data from full-stack APIs
-  const fetchAllData = async () => {
+  const fetchAllData = async (tokenOverride?: string | null) => {
     try {
       setLoading(true);
-      const headersOpt = authToken ? { "Authorization": `Bearer ${authToken}` } : {};
-      const [sumRes, donRes, expRes, progRes, auditRes] = await Promise.all([
+      const activeToken = tokenOverride !== undefined ? tokenOverride : authToken;
+      const headersOpt = activeToken ? { "Authorization": `Bearer ${activeToken}` } : {};
+      const [sumRes, donRes, expRes, progRes, auditRes, sysRes] = await Promise.all([
         fetch("/api/financial-summary", { headers: headersOpt }),
         fetch("/api/donations", { headers: headersOpt }),
         fetch("/api/expenditures", { headers: headersOpt }),
         fetch("/api/progress", { headers: headersOpt }),
-        fetch("/api/audit-logs", { headers: headersOpt })
+        fetch("/api/audit-logs", { headers: headersOpt }),
+        fetch("/api/system-info")
       ]);
 
       const sumData = await sumRes.json();
@@ -214,14 +220,23 @@ export default function App() {
       const expData = await expRes.json();
       const progData = await progRes.json();
       const auditData = await auditRes.json();
+      let sysData = { version: "1.2.8", year: new Date().getFullYear() };
+      try {
+        if (sysRes.ok) {
+          sysData = await sysRes.json();
+        }
+      } catch (e) {
+        console.error("Error parsing system-info", e);
+      }
 
       setSummary(sumData);
       setDonations(donData);
       setExpenditures(expData);
       setProgressLog(progData);
       setAuditLogs(auditData);
+      setSystemInfo(sysData);
 
-      if (authToken) {
+      if (activeToken) {
         try {
           const projRes = await fetch("/api/projects", { headers: headersOpt });
           if (projRes.ok) {
@@ -231,6 +246,8 @@ export default function App() {
         } catch (e) {
           console.error("Error loading projects list", e);
         }
+      } else {
+        setProjects([]);
       }
     } catch (error) {
       console.error("Error loading application state", error);
@@ -439,7 +456,7 @@ export default function App() {
         setIsLoginModalOpen(false);
         setFormSuccess(`Selamat datang kembali, ${data.user.name}!`);
         setTimeout(() => setFormSuccess(""), 4000);
-        fetchAllData();
+        fetchAllData(data.token);
         return true;
       } else {
         const err = await response.json();
@@ -457,8 +474,10 @@ export default function App() {
     localStorage.removeItem("current_user");
     setAuthToken(null);
     setCurrentUser(null);
+    setProjects([]);
     setFormSuccess("Sesi Anda telah ditutup dengan aman.");
     setTimeout(() => setFormSuccess(""), 4000);
+    fetchAllData(null);
   };
 
   const handleInitializeProject = async (e: React.FormEvent) => {
@@ -772,7 +791,7 @@ export default function App() {
           <div>
             <h1 className="text-lg font-bold tracking-tight text-slate-800"><span className="text-emerald-600 font-extrabold">SmartBuild</span></h1>
             <p className="text-[10px] text-slate-550 font-semibold uppercase tracking-wider leading-none mt-0.5">
-              {summary?.projectConfig?.name || "Proyek Utama Pembangunan Masjid At-Taqwa"}
+              {summary?.projectConfig?.initialized && summary?.projectConfig?.name ? summary.projectConfig.name : "Belum Ada Proyek Aktif"}
             </p>
           </div>
         </div>
@@ -920,12 +939,12 @@ export default function App() {
               <div className="space-y-6">
 
                 {/* Project Setup Information Board */}
-                {summary?.projectConfig && (
+                {summary?.projectConfig && summary.projectConfig.initialized ? (
                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-slate-100 pb-3">
                       <div>
                         <span className="text-[9px] bg-emerald-50 text-emerald-700 font-extrabold px-2.5 py-0.5 rounded uppercase tracking-wider font-mono">
-                          INFORMASI RESMI PROYEK : {summary.projectConfig.status.toUpperCase()}
+                          INFORMASI RESMI PROYEK : {summary.projectConfig.status ? summary.projectConfig.status.toUpperCase() : "PUBLIC"}
                         </span>
                         <h2 className="text-base font-bold text-slate-800 mt-1">
                           {summary.projectConfig.name}
@@ -971,6 +990,14 @@ export default function App() {
                         </span>
                       </div>
                     </div>
+                  </div>
+                ) : (
+                  <div className="bg-amber-50/50 border border-amber-200/50 text-amber-900 rounded-xl p-6 text-center space-y-3 animate-fade-in shadow-xs">
+                    <AlertTriangle className="h-7 w-7 text-amber-600 mx-auto animate-bounce" />
+                    <h3 className="text-sm font-extrabold text-slate-800">Sistem Transparansi Bersih: Belum Ada Proyek Aktif</h3>
+                    <p className="text-xs text-slate-600 max-w-xl mx-auto leading-relaxed">
+                      Sistem mendeteksi bahwa saat ini tidak ada proyek pembangunan yang terdaftar di basis data. Silakan masuk / login sebagai <span className="font-bold text-slate-800">Super Admin</span> dan buka menu <span className="font-bold text-amber-700">Inisialisasi Proyek</span> untuk menambahkan proyek pertama Anda.
+                    </p>
                   </div>
                 )}
                 
@@ -2203,9 +2230,9 @@ export default function App() {
             Created for verified public trust, accountability, and real-time physical development summaries.
           </p>
           <div className="text-xxs text-slate-600 flex flex-col sm:flex-row justify-center items-center gap-2">
-            <span>© 2026 SmartBuild Initiative. Standard GPL-v2 License. Auditable code distribution.</span>
+            <span>© {systemInfo.year} SmartBuild Initiative. Standard GPL-v2 License. Auditable code distribution.</span>
             <span className="bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-2 py-0.5 rounded font-mono text-xxs font-medium">
-              v1.2.8
+              v{systemInfo.version}
             </span>
           </div>
         </div>

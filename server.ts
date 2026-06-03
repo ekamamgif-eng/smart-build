@@ -492,7 +492,22 @@ function mapFromPrismaExpenditureCategory(cat: string): any {
   return "Other";
 }
 
+async function hasActiveProject(): Promise<boolean> {
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      const count = await prisma.project.count();
+      return count > 0;
+    } catch {
+      return false;
+    }
+  }
+  const db = getDBState();
+  return Array.isArray(db.projects) && db.projects.length > 0;
+}
+
 async function ensurePostgresBudgets() {
+  if (!(await hasActiveProject())) return;
   const prisma = await getPrismaClient();
   if (!prisma) return;
   try {
@@ -598,6 +613,7 @@ async function createUser(userData: any) {
 }
 
 async function getDonations() {
+  if (!(await hasActiveProject())) return [];
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -692,6 +708,7 @@ async function approveDonationInDb(id: string) {
 }
 
 async function getExpenditures() {
+  if (!(await hasActiveProject())) return [];
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -767,6 +784,7 @@ async function addExpenditure(expData: any) {
 }
 
 async function getBudgets() {
+  if (!(await hasActiveProject())) return [];
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -795,6 +813,7 @@ async function getBudgets() {
 }
 
 async function getProgress() {
+  if (!(await hasActiveProject())) return [];
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -845,6 +864,7 @@ async function addProgress(progressData: any) {
 }
 
 async function getAuditLogs() {
+  if (!(await hasActiveProject())) return [];
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -892,6 +912,9 @@ async function addAuditLog(logData: any) {
 }
 
 async function getProjectConfigFromDb() {
+  if (!(await hasActiveProject())) {
+    return { initialized: false, name: "", budget: 0, description: "", projectStatus: "belum_mulai" };
+  }
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -961,40 +984,18 @@ async function getProjectsFromDb() {
       const projects = await prisma.project.findMany({
         orderBy: { createdAt: "desc" }
       });
-      if (projects.length > 0) {
-        return projects.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          type: p.type,
-          fundingSource: p.fundingSource,
-          status: p.status,
-          projectStatus: p.projectStatus,
-          budget: Number(p.budget),
-          description: p.description,
-          initializedAt: p.initializedAt ? p.initializedAt.toISOString() : null,
-          initializedBy: p.initializedBy
-        }));
-      } else {
-        // Seed project table from json state if empty
-        const db = getDBState();
-        const list = db.projects || [];
-        if (list.length > 0) {
-          const records = list.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            type: p.type || "renovasi",
-            fundingSource: p.fundingSource || "donasi",
-            status: p.status || "public",
-            projectStatus: p.projectStatus || p.status || "berjalan",
-            budget: Number(p.budget || 0),
-            description: p.description || "",
-            initializedAt: p.initializedAt ? new Date(p.initializedAt) : new Date(),
-            initializedBy: p.initializedBy || "Super Admin"
-          }));
-          await prisma.project.createMany({ data: records });
-          return list;
-        }
-      }
+      return projects.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        fundingSource: p.fundingSource,
+        status: p.status,
+        projectStatus: p.projectStatus,
+        budget: Number(p.budget),
+        description: p.description,
+        initializedAt: p.initializedAt ? p.initializedAt.toISOString() : null,
+        initializedBy: p.initializedBy
+      }));
     } catch (err) {
       console.error("Prisma getProjectsFromDb failed, falling back", err);
     }
@@ -1957,6 +1958,23 @@ app.get("/api/export-database", authenticateToken, requireRole(["ADMIN"]), async
   } catch (err) {
     console.error("GET export database error:", err);
     res.status(500).json({ error: "Failed to export project database. Please try again later." });
+  }
+});
+
+// 6. Dynamic System Info Endpoint
+app.get("/api/system-info", (req, res) => {
+  try {
+    const packageJsonPath = path.join(process.cwd(), "package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    res.json({
+      version: packageJson.version || "1.2.8",
+      year: new Date().getFullYear()
+    });
+  } catch (err) {
+    res.json({
+      version: "1.2.8",
+      year: new Date().getFullYear()
+    });
   }
 });
 
