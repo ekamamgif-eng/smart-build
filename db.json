@@ -1,0 +1,336 @@
+{
+  "budgets": [
+    {
+      "id": "rab-1",
+      "itemName": "Pematangan Lahan & Pengecoran Fondasi",
+      "category": "Foundation",
+      "targetAmount": 250000000,
+      "spentAmount": 226000000
+    },
+    {
+      "id": "rab-2",
+      "itemName": "Tiang Struktur & Pembesian Kolom Beton",
+      "category": "Structure",
+      "targetAmount": 450000000,
+      "spentAmount": 180000000
+    },
+    {
+      "id": "rab-3",
+      "itemName": "Rangka Atap Baja, Kubah Masjid & Seng Gelombang",
+      "category": "Roofing",
+      "targetAmount": 300000000,
+      "spentAmount": 0
+    },
+    {
+      "id": "rab-4",
+      "itemName": "Sistem Sanitasi, Pemipaan Pasokan Air & Instalasi Listrik",
+      "category": "MEP",
+      "targetAmount": 200000000,
+      "spentAmount": 19500000
+    },
+    {
+      "id": "rab-5",
+      "itemName": "Finishing Marmer, Ubin Lantai & Ukiran Mihrab Kayu Jati",
+      "category": "Finishing",
+      "targetAmount": 300000000,
+      "spentAmount": 0
+    },
+    {
+      "id": "rab-6",
+      "itemName": "Perizinan Lingkungan, Andalalin, Amdal & IMB Kecamatan",
+      "category": "Operational",
+      "targetAmount": 100000000,
+      "spentAmount": 72000000
+    }
+  ],
+  "donations": [
+    {
+      "id": "don-1",
+      "donorName": "Yayasan Masjid Al-Rahman",
+      "isAnonymous": false,
+      "amount": 450000000,
+      "date": "2026-05-10T14:30:00Z",
+      "paymentMethod": "Bank Transfer",
+      "transferProofUrl": "https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=500&auto=format&fit=crop",
+      "status": "APPROVED"
+    },
+    {
+      "id": "don-2",
+      "donorName": "Penggalangan Dana Kolektif Lintas Iman",
+      "isAnonymous": false,
+      "amount": 185000000,
+      "date": "2026-05-12T09:15:00Z",
+      "paymentMethod": "Bank Transfer",
+      "transferProofUrl": "https://images.unsplash.com/photo-1507925921958-8a62f3d1a50d?w=500&auto=format&fit=crop",
+      "status": "APPROVED"
+    },
+    {
+      "id": "don-3",
+      "donorName": "Haji Sulaiman & Keluarga",
+      "isAnonymous": false,
+      "amount": 50000000,
+      "date": "2026-05-15T18:00:00Z",
+      "paymentMethod": "Cash",
+      "transferProofUrl": "https://images.unsplash.com/photo-1563013544-824ae1d704d3?w=500&auto=format&fit=crop",
+      "status": "APPROVED"
+    },
+    {
+      "id": "don-4",
+      "donorName": "Hamba Allah",
+      "isAnonymous": true,
+      "amount": 25000000,
+      "date": "2026-05-20T10:05:00Z",
+      "paymentMethod": "E-Wallet",
+      "transferProofUrl": "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=500&auto=format&fit=crop",
+      "status": "APPROVED"
+    },
+    {
+      "id": "don-5",
+      "donorName": "Asosiasi Pendonor Masjid Nusantara",
+      "isAnonymous": false,
+      "amount": 100000000,
+      "date": "2026-05-25T11:40:00Z",
+      "paymentMethod": "Bank Transfer",
+      "transferProofUrl": "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=500&auto=format&fit=crop",
+      "status": "APPROVED"
+    },
+    {
+      "id": "don-6",
+      "donorName": "Kotak Amal Toko Roti Prima",
+      "isAnonymous": true,
+      "amount": 6400000,
+      "date": "2026-05-28T16:50:00Z",
+      "paymentMethod": "Cash",
+      "transferProofUrl": "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?w=500&auto=format&fit=crop",
+      "status": "APPROVED"
+    },
+    {
+      "id": "don-pending-1",
+      "donorName": "CV. Al-Hussain Dagang",
+      "isAnonymous": false,
+      "amount": 125000000,
+      "date": "2026-06-01T08:00:00Z",
+      "paymentMethod": "Bank Transfer",
+      "transferProofUrl": "https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=500&auto=format&fit=crop",
+      "status": "PENDING"
+    },
+    {
+      "id": "don-pending-2",
+      "donorName": "Sarah Jenkins & Rekan",
+      "isAnonymous": false,
+      "amount": 3500000,
+      "date": "2026-06-01T20:20:00Z",
+      "paymentMethod": "E-Wallet",
+      "transferProofUrl": "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=500&auto=format&fit=crop",
+      "status": "PENDING"
+    }
+  ],
+  "expenditures": [
+    {
+      "id": "exp-1",
+      "itemName": "Semen Portland Tiga Roda (500 sak untuk fondasi)",
+      "category": "Material",
+      "volume": 500,
+      "unit": "sak",
+      "unitPrice": 72000,
+      "totalPrice": 36000000,
+      "storeName": "Toko Bangunan Mega Jaya",
+      "receiptUrl": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=500&auto=format&fit=crop",
+      "inputtedBy": "David Miller (Bendahara)",
+      "date": "2026-05-11T09:00:00Z"
+    },
+    {
+      "id": "exp-2",
+      "itemName": "Kontrak Pekerja Tahap Pengecoran Tapak Fondasi",
+      "category": "Labor",
+      "volume": 1,
+      "unit": "paket",
+      "unitPrice": 190000000,
+      "totalPrice": 190000000,
+      "storeName": "PT. Apex Kontraktor Utama",
+      "receiptUrl": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=500&auto=format&fit=crop",
+      "inputtedBy": "David Miller (Bendahara)",
+      "date": "2026-05-13T10:30:00Z"
+    },
+    {
+      "id": "exp-3",
+      "itemName": "Besi Beton Ulir Krakatau Steel (Grade 60, Kolom Struktur)",
+      "category": "Material",
+      "volume": 15,
+      "unit": "ton",
+      "unitPrice": 12000000,
+      "totalPrice": 180000000,
+      "storeName": "PT. Dunia Baja Abadi",
+      "receiptUrl": "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=500&auto=format&fit=crop",
+      "inputtedBy": "David Miller (Bendahara)",
+      "date": "2026-05-16T14:00:00Z"
+    },
+    {
+      "id": "exp-4",
+      "itemName": "Pipa Tembaga Distribusi Air Bersih Utama",
+      "category": "Material",
+      "volume": 130,
+      "unit": "meter",
+      "unitPrice": 150000,
+      "totalPrice": 19500000,
+      "storeName": "Depo Air & Sanitasi HydroPlumb",
+      "receiptUrl": "https://images.unsplash.com/photo-1581094288338-2314dddb7ecc?w=500&auto=format&fit=crop",
+      "inputtedBy": "David Miller (Bendahara)",
+      "date": "2026-05-22T15:20:00Z"
+    },
+    {
+      "id": "exp-5",
+      "itemName": "Sewa Ekskavator Backhoe Buldozer (Pematangan Lahan)",
+      "category": "Equipment",
+      "volume": 3,
+      "unit": "hari",
+      "unitPrice": 6000000,
+      "totalPrice": 18000000,
+      "storeName": "CV. Titan Rental Alat Berat",
+      "receiptUrl": "https://images.unsplash.com/photo-1590674899484-13aa0d13301a?w=500&auto=format&fit=crop",
+      "inputtedBy": "David Miller (Bendahara)",
+      "date": "2026-05-14T08:30:00Z"
+    },
+    {
+      "id": "exp-6",
+      "itemName": "Persetujuan IMB (Izin Mendirikan Bangunan) Kecamatan",
+      "category": "Permit/Admin",
+      "volume": 1,
+      "unit": "berkas",
+      "unitPrice": 72000000,
+      "totalPrice": 72000000,
+      "storeName": "Dinas Penanaman Modal & PTSP",
+      "receiptUrl": "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=500&auto=format&fit=crop",
+      "inputtedBy": "David Miller (Bendahara)",
+      "date": "2026-05-05T11:00:00Z"
+    }
+  ],
+  "progress": [
+    {
+      "id": "prog-1",
+      "percentage": 5,
+      "description": "Mobilisasi alat berat selesai sepenuhnya. Penggalian tanah untuk tapak fondasi dasar basement berhasil diselesaikan.",
+      "timelineDate": "2026-05-06T12:00:00Z",
+      "photoUrls": [
+        "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=500&auto=format&fit=crop"
+      ]
+    },
+    {
+      "id": "prog-2",
+      "percentage": 20,
+      "description": "Pengecoran tapak beton mengeras sempurna. Tiang struktur kolom beton bertulang selesai dicor dan diuji kekuatan getarannya.",
+      "timelineDate": "2026-05-14T10:00:00Z",
+      "photoUrls": [
+        "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=500&auto=format&fit=crop"
+      ]
+    },
+    {
+      "id": "prog-3",
+      "percentage": 35,
+      "description": "Balok lantai dasar dan rangka baja utama didirikan. Sistem drainase penyaluran limpasan air hujan selesai dipasang.",
+      "timelineDate": "2026-05-24T16:30:00Z",
+      "photoUrls": [
+        "https://images.unsplash.com/photo-1590674899484-13aa0d13301a?w=500&auto=format&fit=crop"
+      ]
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "log-1",
+      "timestamp": "2026-05-05T11:05:00Z",
+      "action": "CREATE",
+      "tableName": "Expenditure",
+      "recordId": "exp-6",
+      "changedBy": "David Miller (Bendahara)",
+      "details": "Mencatat pengeluaran perizinan sebesar Rp 72.000.000 untuk Persetujuan IMB (Izin Mendirikan Bangunan) Kecamatan. Lampiran: terverifikasi."
+    },
+    {
+      "id": "log-2",
+      "timestamp": "2026-05-06T12:05:00Z",
+      "action": "CREATE",
+      "tableName": "PhysicalProgress",
+      "recordId": "prog-1",
+      "changedBy": "Arthur Pendelton (PM Proyek)",
+      "details": "Perkembangan fisik diperbarui ke 5%: Mobilisasi alat berat selesai, penggalian dasar basement selesai."
+    },
+    {
+      "id": "log-3",
+      "timestamp": "2026-05-10T14:35:00Z",
+      "action": "APPROVE",
+      "tableName": "Donation",
+      "recordId": "don-1",
+      "changedBy": "David Miller (Bendahara)",
+      "details": "Persetujuan donasi publik dari 'Yayasan Masjid Al-Rahman' sebesar Rp 450.000.000 via Transfer Bank. Dana terverifikasi."
+    },
+    {
+      "id": "log-4",
+      "timestamp": "2026-05-11T09:12:00Z",
+      "action": "CREATE",
+      "tableName": "Expenditure",
+      "recordId": "exp-1",
+      "changedBy": "David Miller (Bendahara)",
+      "details": "Mencatat pengeluaran sebesar Rp 36.000.000 untuk 500 sak Semen Portland dari Toko Bangunan Mega Jaya."
+    },
+    {
+      "id": "log-5",
+      "timestamp": "2026-05-12T09:20:00Z",
+      "action": "APPROVE",
+      "tableName": "Donation",
+      "recordId": "don-2",
+      "changedBy": "David Miller (Bendahara)",
+      "details": "Persetujuan donasi lintas iman komunitas sebesar Rp 185.000.000. Bukti transfer diperiksa dan dana dicatat selesai."
+    }
+  ],
+  "users": [
+    {
+      "id": "user-admin",
+      "email": "admin@masjid.id",
+      "name": "Haji Sulaiman (Super Admin)",
+      "role": "ADMIN",
+      "password": "$2b$10$9rqW/WKd6qJc3mcDowD/beSk/Acx.BOttpOljZVoll1zSTol2j6tG",
+      "createdAt": "2026-06-03T08:27:22.056Z"
+    },
+    {
+      "id": "user-treasurer",
+      "email": "bendahara@masjid.id",
+      "name": "David Miller (Bendahara)",
+      "role": "TREASURER",
+      "password": "$2b$10$PQht1R5HGVGbpt7K3m93HOC.d.Kh2AobC3cB21wpm/2Ayw37nmkS2",
+      "createdAt": "2026-06-03T08:27:22.156Z"
+    },
+    {
+      "id": "user-pm",
+      "email": "pm@masjid.id",
+      "name": "Arthur Pendelton (PM)",
+      "role": "PROJECT_MANAGER",
+      "password": "$2b$10$5PzYIi8ehOXSjTyzlSxmKePoXhFNU8IIXAEWw0GuSuT7WeH/g7tRa",
+      "createdAt": "2026-06-03T08:27:22.255Z"
+    }
+  ],
+  "projectConfig": {
+    "id": "project-default",
+    "name": "Proyek Utama Pembangunan Masjid At-Taqwa",
+    "type": "renovasi",
+    "fundingSource": "donasi",
+    "status": "public",
+    "projectStatus": "berjalan",
+    "budget": 1600000000,
+    "description": "Pembangunan dan perluasan kapasitas ibadah utama serta fasilitas dakwah Masjid At-Taqwa.",
+    "initialized": true,
+    "initializedAt": "2026-05-10T14:30:00Z"
+  },
+  "projects": [
+    {
+      "id": "project-default",
+      "name": "Proyek Utama Pembangunan Masjid At-Taqwa",
+      "type": "renovasi",
+      "fundingSource": "donasi",
+      "status": "public",
+      "projectStatus": "berjalan",
+      "budget": 1600000000,
+      "description": "Pembangunan dan perluasan kapasitas ibadah utama serta fasilitas dakwah Masjid At-Taqwa.",
+      "initializedAt": "2026-05-10T14:30:00Z",
+      "initializedBy": "Super Admin"
+    }
+  ]
+}

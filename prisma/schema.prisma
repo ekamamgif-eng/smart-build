@@ -113,3 +113,35 @@ model AuditLog {
   user      User?    @relation(fields: [userId], references: [id])
   details   String   // Textual description of what changed (old values vs new values)
 }
+
+model ProjectConfig {
+  id             String   @id @default(uuid())
+  name           String
+  type           String
+  fundingSource  String
+  status         String
+  projectStatus  String
+  budget         Decimal  @db.Decimal(12, 2)
+  description    String
+  initialized    Boolean  @default(true)
+  initializedAt  DateTime @default(now())
+  initializedBy  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Project {
+  id             String   @id @default(uuid())
+  name           String
+  type           String
+  fundingSource  String
+  status         String
+  projectStatus  String
+  budget         Decimal  @db.Decimal(12, 2)
+  description    String
+  initializedAt  DateTime @default(now())
+  initializedBy  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+

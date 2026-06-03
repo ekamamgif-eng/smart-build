@@ -9,7 +9,6 @@ import {
   Coins, 
   DollarSign, 
   FileText, 
-  FolderTree, 
   CheckCircle, 
   Loader2, 
   Search, 
@@ -20,15 +19,14 @@ import {
   Plus, 
   Check, 
   Eye, 
-  Database,
   ArrowRight,
   Sparkles,
   AlertTriangle,
   History,
-  Code,
   LogOut,
   UserCheck,
-  Settings
+  Settings,
+  Download
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -78,7 +76,7 @@ export const translatePaymentMethod = (method: string) => {
 
 export default function App() {
   // Navigation
-  const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "architecture">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "config">("dashboard");
 
   // Authentication states
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem("auth_token"));
@@ -126,8 +124,18 @@ export default function App() {
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [progressLog, setProgressLog] = useState<PhysicalProgress[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [folderStructure, setFolderStructure] = useState<any>(null);
+  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Project List Edit States
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editProjName, setEditProjName] = useState("");
+  const [editProjType, setEditProjType] = useState<"baru" | "renovasi" | "alih_fungsi">("baru");
+  const [editProjFunding, setEditProjFunding] = useState<string>("donasi");
+  const [editProjStatus, setEditProjStatus] = useState<"public" | "private">("public");
+  const [editProjProjectStatus, setEditProjProjectStatus] = useState<"pending" | "berjalan" | "selesai" | "batal">("berjalan");
+  const [editProjBudget, setEditProjBudget] = useState("");
+  const [editProjDescription, setEditProjDescription] = useState("");
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -158,12 +166,10 @@ export default function App() {
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
 
-  const [schemaSelection, setSchemaSelection] = useState<"prisma" | "postgresql">("prisma");
-
   // Project Config states
   const [newProjName, setNewProjName] = useState("");
   const [newProjType, setNewProjType] = useState<"baru" | "renovasi" | "alih_fungsi">("baru");
-  const [newProjFunding, setNewProjFunding] = useState<"perusahaan" | "donasi" | "pribadi">("donasi");
+  const [newProjFunding, setNewProjFunding] = useState<string>("donasi");
   const [newProjStatus, setNewProjStatus] = useState<"public" | "private">("public");
   const [newProjBudget, setNewProjBudget] = useState("");
   const [newProjDescription, setNewProjDescription] = useState("");
@@ -176,18 +182,31 @@ export default function App() {
   const [newProjStartFresh, setNewProjStartFresh] = useState(true);
   const [projConfigLoading, setProjConfigLoading] = useState(false);
 
+  // Helper functions for multiple choice funding sources
+  const getFundingSourcesLabel = (fundingSource: string) => {
+    if (!fundingSource) return 'Belum Diatur';
+    return fundingSource.split(',')
+      .map(src => {
+        const trimmed = src.trim();
+        if (trimmed === 'perusahaan') return 'Sponsor / Perusahaan';
+        if (trimmed === 'donasi') return 'Donasi Jamaah';
+        if (trimmed === 'pribadi') return 'Kas Internal';
+        return trimmed;
+      })
+      .join(' + ');
+  };
+
   // Fetch core data from full-stack APIs
   const fetchAllData = async () => {
     try {
       setLoading(true);
       const headersOpt = authToken ? { "Authorization": `Bearer ${authToken}` } : {};
-      const [sumRes, donRes, expRes, progRes, auditRes, folderRes] = await Promise.all([
+      const [sumRes, donRes, expRes, progRes, auditRes] = await Promise.all([
         fetch("/api/financial-summary", { headers: headersOpt }),
         fetch("/api/donations", { headers: headersOpt }),
         fetch("/api/expenditures", { headers: headersOpt }),
         fetch("/api/progress", { headers: headersOpt }),
-        fetch("/api/audit-logs", { headers: headersOpt }),
-        fetch("/api/folder-structure", { headers: headersOpt })
+        fetch("/api/audit-logs", { headers: headersOpt })
       ]);
 
       const sumData = await sumRes.json();
@@ -195,14 +214,24 @@ export default function App() {
       const expData = await expRes.json();
       const progData = await progRes.json();
       const auditData = await auditRes.json();
-      const folderData = await folderRes.json();
 
       setSummary(sumData);
       setDonations(donData);
       setExpenditures(expData);
       setProgressLog(progData);
       setAuditLogs(auditData);
-      setFolderStructure(folderData);
+
+      if (authToken) {
+        try {
+          const projRes = await fetch("/api/projects", { headers: headersOpt });
+          if (projRes.ok) {
+            const projData = await projRes.json();
+            setProjects(projData);
+          }
+        } catch (e) {
+          console.error("Error loading projects list", e);
+        }
+      }
     } catch (error) {
       console.error("Error loading application state", error);
     } finally {
@@ -524,6 +553,141 @@ export default function App() {
     }
   };
 
+  const startEditProject = (p: any) => {
+    setEditingProjectId(p.id);
+    setEditProjName(p.name);
+    setEditProjType(p.type || "baru");
+    setEditProjFunding(p.fundingSource || "donasi");
+    setEditProjStatus(p.status || "public");
+    setEditProjProjectStatus(p.projectStatus || p.projectConfig?.projectStatus || "berjalan");
+    setEditProjBudget(String(p.budget || ""));
+    setEditProjDescription(p.description || "");
+  };
+
+  const handleUpdateProject = async (id: string) => {
+    try {
+      setFormError("");
+      setFormSuccess("");
+
+      if (!editProjName.trim()) {
+        setFormError("Nama proyek wajib diisi.");
+        return;
+      }
+      if (!editProjBudget || Number(editProjBudget) <= 0) {
+        setFormError("Anggaran proyek wajib berupa angka positif.");
+        return;
+      }
+      if (!editProjDescription.trim()) {
+        setFormError("Deskripsi rencana proyek wajib diisi.");
+        return;
+      }
+
+      const headersOpt = authToken ? { 
+        "Authorization": `Bearer ${authToken}`,
+        "Content-Type": "application/json"
+      } : {
+        "Content-Type": "application/json"
+      };
+
+      const payload = {
+        name: editProjName,
+        type: editProjType,
+        fundingSource: editProjFunding,
+        status: editProjStatus,
+        projectStatus: editProjProjectStatus,
+        budget: Number(editProjBudget),
+        description: editProjDescription
+      };
+
+      const response = await fetch(`/api/projects/${id}`, {
+        method: "PUT",
+        headers: headersOpt,
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        setFormSuccess("Proyek berhasil diperbarui!");
+        setTimeout(() => setFormSuccess(""), 5000);
+        setEditingProjectId(null);
+        // Refresh everything
+        fetchAllData();
+      } else {
+        const err = await response.json();
+        setFormError(err.error || "Gagal memperbarui proyek.");
+      }
+    } catch (err) {
+      console.error("Error updating project", err);
+      setFormError("Gagal memperbarui proyek karena masalah koneksi.");
+    }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus proyek ini? Tindakan ini tidak dapat dibatalkan.")) {
+      return;
+    }
+    try {
+      setFormError("");
+      setFormSuccess("");
+
+      const headersOpt = authToken ? { 
+        "Authorization": `Bearer ${authToken}`
+      } : {};
+
+      const response = await fetch(`/api/projects/${id}`, {
+        method: "DELETE",
+        headers: headersOpt
+      });
+
+      if (response.ok) {
+        setFormSuccess("Proyek berhasil dihapus!");
+        setTimeout(() => setFormSuccess(""), 5000);
+        // Refresh everything
+        fetchAllData();
+      } else {
+        const err = await response.json();
+        setFormError(err.error || "Gagal menghapus proyek.");
+      }
+    } catch (err) {
+      console.error("Error deleting project", err);
+      setFormError("Gagal menghapus proyek karena masalah koneksi.");
+    }
+  };
+
+  const handleExportDatabase = async () => {
+    try {
+      setFormError("");
+      const headersOpt = authToken ? { 
+        "Authorization": `Bearer ${authToken}`
+      } : {};
+
+      const response = await fetch("/api/export-database", {
+        headers: headersOpt
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        setFormError(err.error || "Gagal mengekspor data database.");
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `smartbuild_backup_${new Date().toISOString().split("T")[0]}.json`);
+      document.body.appendChild(link);
+      link.click();
+      if (link.parentNode) {
+        link.parentNode.removeChild(link);
+      }
+      setFormSuccess("Cadangan basis data berhasil diekspor ke format JSON!");
+      setTimeout(() => setFormSuccess(""), 5000);
+    } catch (err) {
+      console.error("Error exporting database", err);
+      setFormError("Gagal mengunduh cadangan database karena masalah koneksi.");
+    }
+  };
+
   // Combine, sort and filter ledger collections
   const getCombinedLedger = () => {
     const list: Array<{
@@ -608,7 +772,7 @@ export default function App() {
           <div>
             <h1 className="text-lg font-bold tracking-tight text-slate-800"><span className="text-emerald-600 font-extrabold">SmartBuild</span></h1>
             <p className="text-[10px] text-slate-550 font-semibold uppercase tracking-wider leading-none mt-0.5">
-              {summary?.projectConfig?.name || "Proyek Ekspansi Pusat Komunitas Al-Noor"}
+              {summary?.projectConfig?.name || "Proyek Utama Pembangunan Masjid At-Taqwa"}
             </p>
           </div>
         </div>
@@ -644,17 +808,6 @@ export default function App() {
             }`}
           >
             Project Manager
-          </button>
-          <button
-            onClick={() => setActiveTab("architecture")}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
-              activeTab === "architecture"
-                ? "bg-white text-emerald-600 shadow-sm"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <Code className="h-3.5 w-3.5" />
-            <span>Spesifikasi Skema</span>
           </button>
           {currentUser?.role === 'ADMIN' && (
             <button
@@ -738,14 +891,6 @@ export default function App() {
         >
           Manajer Proyek
         </button>
-        <button
-          onClick={() => setActiveTab("architecture")}
-          className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-            activeTab === "architecture" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-700"
-          }`}
-        >
-          Skema Spek
-        </button>
         {currentUser?.role === 'ADMIN' && (
           <button
             onClick={() => setActiveTab("config")}
@@ -791,7 +936,7 @@ export default function App() {
                           Tipe: {summary.projectConfig.type === 'baru' ? 'Proyek Baru' : summary.projectConfig.type === 'renovasi' ? 'Renovasi' : 'Alih Fungsi'}
                         </span>
                         <span className="bg-purple-50 text-purple-700 font-bold px-2.5 py-0.5 rounded-md capitalize border border-purple-200">
-                          Sumber Dana: {summary.projectConfig.fundingSource === 'perusahaan' ? 'Korporasi / Perusahaan' : summary.projectConfig.fundingSource === 'donasi' ? 'Donasi Swadaya' : 'Pribadi / Internal'}
+                          Sumber Dana: {getFundingSourcesLabel(summary.projectConfig.fundingSource)}
                         </span>
                         <span className="bg-amber-50 text-amber-900 font-bold px-2.5 py-0.5 rounded-md capitalize border border-amber-200">
                           Peruntukan: {summary.projectConfig.status === 'public' ? 'Publik' : 'Privat'}
@@ -983,7 +1128,7 @@ export default function App() {
                     </div>
                     <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
                       <span className="text-xs font-bold text-slate-400 font-mono uppercase tracking-wider block">
-                        🔒 INTEGRITAS DATA MUTASI AUDIT KRIPTOGRAFIS NEON POSTGRESQL TERVERIFIKASI
+                        🔒 INTEGRITAS DATA MUTASI AUDIT DENGAN TRANSAKSI FISIK TERVERIFIKASI
                       </span>
                     </div>
                   </div>
@@ -1014,18 +1159,29 @@ export default function App() {
                         </svg>
                       </div>
                       <div className="space-y-3 flex-1">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-slate-500 font-medium font-sans">Pilar Struktur & Beton</span>
-                          <span className="text-slate-800 font-bold">95% Selesai</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-slate-500 font-medium font-sans">Pekerjaan Finishing Tegel</span>
-                          <span className="text-slate-800 font-bold">12% Selesai</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-slate-500 font-medium font-sans">Sistem MEP & Pemipaan</span>
-                          <span className="text-slate-800 font-bold">45% Selesai</span>
-                        </div>
+                        {progressLog.length > 0 ? (
+                          [...progressLog].reverse().slice(0, 3).map((log) => (
+                            <div key={log.id} className="border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-600 font-medium font-sans line-clamp-1" title={log.description}>
+                                  {log.description}
+                                </span>
+                                <span className="text-emerald-600 font-bold shrink-0 ml-2">{log.percentage}%</span>
+                              </div>
+                              <p className="text-[9px] text-slate-400 mt-0.5">
+                                {new Date(log.timelineDate).toLocaleDateString("id-ID", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric"
+                                })}
+                              </p>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center text-slate-400 text-xs py-4 italic">
+                            Belum ada rincian kemajuan fisik yang tercatat di database.
+                          </div>
+                        )}
                       </div>
                       {progressLog.length > 0 && (
                         <div className="mt-6 border-t border-slate-150 pt-4">
@@ -1073,7 +1229,7 @@ export default function App() {
                         </div>
                       </div>
                       <div className="mt-6 pt-4 border-t border-slate-800">
-                        <p className="text-[9px] text-slate-400 text-center italic">Setiap entri di-hash dan tersimpan mutlak dalam rantai log PostgreSQL</p>
+                        <p className="text-[9px] text-slate-400 text-center italic">Setiap entri tersimpan mutlak dalam rantai log sistem basis data aman terpercaya</p>
                       </div>
                     </div>
 
@@ -1363,7 +1519,7 @@ export default function App() {
                             <div className="mt-3 bg-rose-50 p-3 rounded-lg border border-rose-100 flex items-center space-x-2 text-rose-800">
                               <AlertTriangle className="h-4.5 w-4.5 text-rose-600 shrink-0" />
                               <p className="text-xxs font-sans">
-                                <strong>Validasi Akuntabilitas Ketat:</strong> Foto kuitansi / nota belanja wajib diisi demi transparansi kas untuk menghindari penolakan pencatatan kas keluar oleh basis data Neon PostgreSQL.
+                                <strong>Validasi Akuntabilitas Ketat:</strong> Foto kuitansi / nota belanja wajib diisi demi transparansi kas untuk menghindari penolakan pencatatan kas keluar oleh sistem.
                               </p>
                             </div>
 
@@ -1536,268 +1692,7 @@ export default function App() {
               </div>
             )}
 
-            {/* 4. SCHEMAS, CODE PLATES, AND DIRECTORIES ARCHITECTURE */}
-            {activeTab === "architecture" && (
-              <div className="space-y-6">
-                
-                {/* Intro Architecture Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  
-                  {/* Recommended Folder Map layout */}
-                  <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs lg:col-span-5 flex flex-col justify-between">
-                    <div>
-                      <h3 className="font-bold text-slate-800 text-sm mb-1.5 flex items-center space-x-1.5">
-                        <FolderTree className="h-4.5 w-4.5 text-emerald-600" />
-                        <span>Recommended Workspace Layout</span>
-                      </h3>
-                      <p className="text-xxs text-slate-500 mb-4 font-sans leading-relaxed">
-                        To construct a robust Next.js/Express full-stack backend with clear separation, we outline the optimized layout mapping schemas, controllers, clients and routers. Learn or copy this physical workspace logic:
-                      </p>
 
-                      <div className="bg-slate-900 text-slate-300 p-4 rounded-xl text-xxs font-mono overflow-auto max-h-96 border border-slate-800">
-                        {folderStructure && (
-                          <div className="space-y-3">
-                            <span className="text-emerald-400 font-bold block">📂 {folderStructure.name}/</span>
-                            
-                            {folderStructure.children.map((child: any, idx: number) => (
-                              <div key={idx} className="pl-3 border-l-2 border-slate-800 space-y-1">
-                                <span className="text-amber-400 font-semibold block">
-                                  {child.type === 'directory' ? '📂' : '📄'} {child.name}
-                                </span>
-                                {child.description && (
-                                  <p className="text-slate-500 text-xxs block pl-6 font-sans italic leading-tight">
-                                    // {child.description}
-                                  </p>
-                                )}
-
-                                {child.children && (
-                                  <div className="pl-4 border-l border-slate-800 space-y-1">
-                                    {child.children.map((sub: any, sIdx: number) => (
-                                      <div key={sIdx}>
-                                        <span className="text-blue-300 block">{sub.type === 'directory' ? '📂' : '📄'} {sub.name}</span>
-                                        {sub.description && (
-                                          <p className="text-slate-500 font-sans italic pl-5 text-xxs leading-tight">
-                                            // {sub.description}
-                                          </p>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Schema highlighting (Left 7 columns) */}
-                  <div className="bg-white border border-slate-200 rounded-2xl shadow-xs lg:col-span-12 flex flex-col overflow-hidden">
-                    <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                      <div>
-                        <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-1.5">
-                          <Database className="h-4.5 w-4.5 text-emerald-600" />
-                          <span>NeonDB / Postgres Data Architecture</span>
-                        </h3>
-                        <p className="text-xxs text-slate-500">Prisma definition schema and PostgreSQL init DDL models complete with audit actions</p>
-                      </div>
-
-                      <div className="flex space-x-1.5 p-1 bg-slate-100 rounded-lg">
-                        <button 
-                          onClick={() => setSchemaSelection("prisma")}
-                          className={`px-3 py-1.5 text-xxs font-bold rounded-md transition ${schemaSelection === 'prisma' ? 'bg-white text-emerald-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                          Prisma Schema
-                        </button>
-                        <button 
-                          onClick={() => setSchemaSelection("postgresql")}
-                          className={`px-3 py-1.5 text-xxs font-bold rounded-md transition ${schemaSelection === 'postgresql' ? 'bg-white text-emerald-600 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                          PostgreSQL DDL with Triggers
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-slate-900 text-slate-300 text-xxs font-mono max-h-[500px] overflow-auto border-t border-slate-850">
-                      {schemaSelection === "prisma" ? (
-                        <pre className="leading-relaxed">
-{`// /prisma/schema.prisma
-// Managed via neon.tech cloud scaling Postgres pools
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "prisma-client-js"
-}
-
-enum Role {
-  ADMIN
-  TREASURER
-  PROJECT_MANAGER
-}
-
-enum PaymentMethod {
-  BANK_TRANSFER
-  E_WALLET
-  CASH
-  CRYPTO
-}
-
-enum DonationStatus {
-  PENDING
-  APPROVED
-}
-
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  role      Role     @default(TREASURER)
-  createdAt DateTime @default(now())
-}
-
-model Budget {
-  id           String   @id @default(uuid())
-  itemName     String
-  category     String   // e.g. "Foundation", "Structure", "Roofing", "MEP", "Operational"
-  targetAmount Decimal  @db.Decimal(12, 2)
-  spentAmount  Decimal  @db.Decimal(12, 2) @default(0)
-}
-
-model Donation {
-  id               String         @id @default(uuid())
-  donorName        String
-  isAnonymous      Boolean        @default(false)
-  amount           Decimal        @db.Decimal(12, 2)
-  date             DateTime       @default(now())
-  paymentMethod    PaymentMethod
-  transferProofUrl String         // Required for audit-readiness
-  status           DonationStatus @default(PENDING)
-  createdAt        DateTime       @default(now())
-}
-
-model Expenditure {
-  id          String              @id @default(uuid())
-  itemName    String
-  category    String              // "Material", "Labor", "Equipment", etc.
-  volume      Decimal             @db.Decimal(10, 2)
-  unit        String              // "m3", "kg", "pcs"
-  unitPrice   Decimal             @db.Decimal(12, 2)
-  totalPrice  Decimal             @db.Decimal(12, 2)
-  storeName   String
-  receiptUrl  String              // STRICT VALIDATION: cannot be saved without receipt proof URL
-  inputtedBy  String
-  date        DateTime            @default(now())
-}
-
-model PhysicalProgress {
-  id           String   @id @default(uuid())
-  percentage   Int      // 0 to 100
-  description  String
-  timelineDate DateTime @default(now())
-  photoUrls    String[] // photographic updates
-}`}
-                        </pre>
-                      ) : (
-                        <pre className="leading-relaxed">
-{`-- /prisma/migrations/init.sql
--- Run DDL SQL scripts directly inside Neon SQL dashboard
-
-CREATE TABLE "Donation" (
-    "id" VARCHAR(255) PRIMARY KEY,
-    "donorName" VARCHAR(255) NOT NULL,
-    "isAnonymous" BOOLEAN DEFAULT FALSE,
-    "amount" DECIMAL(12,2) NOT NULL CHECK ("amount" > 0),
-    "date" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    "paymentMethod" VARCHAR(50) NOT NULL,
-    "transferProofUrl" VARCHAR(1024) NOT NULL, -- MANDATORY ATTACHMENT
-    "status" VARCHAR(50) DEFAULT 'PENDING'
-);
-
-CREATE TABLE "Expenditure" (
-    "id" VARCHAR(255) PRIMARY KEY,
-    "itemName" VARCHAR(255) NOT NULL,
-    "category" VARCHAR(50) NOT NULL,
-    "volume" DECIMAL(10,2) NOT NULL,
-    "unit" VARCHAR(50) NOT NULL,
-    "unitPrice" DECIMAL(12,2) NOT NULL,
-    "totalPrice" DECIMAL(12,2) NOT NULL, -- Computed as volume * unitPrice
-    "storeName" VARCHAR(255) NOT NULL,
-    "receiptUrl" VARCHAR(1024) NOT NULL, -- VERIFIABLE INVOICE IMAGE
-    "inputtedBy" VARCHAR(255) NOT NULL
-);
-
--- STRICT DB CONSTRAINT: Validation checks
-ALTER TABLE "Expenditure" ADD CONSTRAINT check_total CHECK ("totalPrice" = "volume" * "unitPrice");
-ALTER TABLE "Expenditure" ADD CONSTRAINT check_receipt CHECK (length("receiptUrl") > 0);
-
--- MULTI-WRITE AUDIT LOG AUTOMATED PG TRIGGER PROCEDURE
-CREATE OR REPLACE FUNCTION trigger_capture_audit()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO "AuditLog" ("id", "action", "tableName", "recordId", "changedBy", "details")
-    VALUES (
-        gen_random_uuid()::varchar,
-        TG_OP,
-        TG_TABLE_NAME,
-        COALESCE(NEW."id", OLD."id"),
-        COALESCE(NEW."inputtedBy", 'AdminSystem'),
-        'Transaction processed on ' || TG_TABLE_NAME || ' for record ' || COALESCE(NEW."id", OLD."id")
-    );
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;`}
-                        </pre>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Audit Record Logs (Right Column / Full Row list) */}
-                  <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs lg:col-span-12">
-                    <div className="flex justify-between items-center mb-4">
-                      <div>
-                        <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-1 text-slate-900">
-                          <History className="h-4.5 w-4.5 text-emerald-600 mr-1" />
-                          <span>Ledger Security Audit Logs (Full Record Trial)</span>
-                        </h3>
-                        <p className="text-xxs text-slate-400">Inviolable audit trails tracking system interactions and verification actions</p>
-                      </div>
-
-                      <span className="bg-rose-100 text-rose-800 text-xxs font-mono font-bold px-2 py-0.5 rounded-sm">Active Trigger Capturer</span>
-                    </div>
-
-                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                      {auditLogs.map((log) => (
-                        <div key={log.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-start space-x-3 text-xxs font-mono">
-                          <div className={`mt-0.5 px-2 py-0.5 rounded-sm font-bold text-white uppercase text-[8px] ${
-                            log.action === "APPROVE" ? "bg-emerald-600" :
-                            log.action === "CREATE" ? "bg-blue-600" : "bg-slate-500"
-                          }`}>
-                            {log.action}
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <div className="flex justify-between text-slate-400">
-                              <span>Table: {log.tableName} | Record: {log.recordId}</span>
-                              <span>{new Date(log.timestamp).toLocaleString()}</span>
-                            </div>
-                            <p className="text-slate-800 font-sans tracking-tight">
-                              {log.details}
-                            </p>
-                            <span className="block text-slate-500 text-xxs italic font-sans">// Processed by {log.changedBy}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                </div>
-
-              </div>
-            )}
 
             {activeTab === "config" && currentUser?.role === "ADMIN" && (
               <div className="space-y-6 max-w-4xl mx-auto">
@@ -1813,11 +1708,240 @@ $$ LANGUAGE plpgsql;`}
                   </div>
                 </div>
 
+                {/* DAFTAR PROYEK SECTION */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-800">Daftar Proyek Terdaftar (Super Admin)</h4>
+                      <p className="text-xxs text-slate-400">Total {projects.length || 0} proyek terdaftar dalam database.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleExportDatabase}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-550 text-white rounded-lg text-xxs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        title="Unduh seluruh data tabel (RAB, Donatur, Mutasi Kas, Log, dll.) dalam satu berkas JSON"
+                      >
+                        <Download className="h-3 w-3" />
+                        Ekspor Basis Data (JSON)
+                      </button>
+                      <span className="text-[10px] bg-slate-100 text-slate-700 font-mono font-bold px-2.5 py-1.5 rounded-md">
+                        KONSOL ADMIN
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {projects.length === 0 ? (
+                      <div className="text-center py-8 text-neutral-400 text-xs">
+                        Belum ada proyek yang dikonfigurasi. Silakan isi form di bawah untuk membuat proyek perdana.
+                      </div>
+                    ) : (
+                      projects.map((p: any) => {
+                        const isEditing = editingProjectId === p.id;
+                        return (
+                          <div key={p.id || "default"} className="border border-slate-200 rounded-xl p-4 hover:border-slate-300 transition space-y-3 bg-slate-50/40">
+                            {isEditing ? (
+                              <div className="space-y-4 pt-1">
+                                <div className="text-xs font-bold text-amber-600 uppercase tracking-wider border-b border-slate-100 pb-1">
+                                  Mengedit Proyek: {p.name}
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                  <div className="sm:col-span-2">
+                                    <label className="block text-slate-700 text-xxs font-bold mb-1">Nama Proyek</label>
+                                    <input
+                                      type="text"
+                                      value={editProjName}
+                                      onChange={(e) => setEditProjName(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-slate-700 text-xxs font-bold mb-1">Tipe Pekerjaan</label>
+                                    <select
+                                      value={editProjType}
+                                      onChange={(e: any) => setEditProjType(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                    >
+                                      <option value="baru">Proyek Baru</option>
+                                      <option value="renovasi">Renovasi</option>
+                                      <option value="alih_fungsi">Alih Fungsi</option>
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-slate-700 text-xxs font-bold mb-1.5">Sumber Dana (Pilihan Ganda)</label>
+                                    <div className="space-y-1.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                      {[
+                                        { value: 'donasi', title: 'Donasi Jamaah' },
+                                        { value: 'perusahaan', title: 'Pihak Ketiga' },
+                                        { value: 'pribadi', title: 'Kas Internal' },
+                                      ].map((item) => {
+                                        const isChecked = (editProjFunding || '').split(',').includes(item.value);
+                                        return (
+                                          <label key={item.value} className="flex items-center gap-2 cursor-pointer select-none group text-xxs text-slate-700 leading-none">
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() => {
+                                                const current = (editProjFunding || '').split(',').filter(Boolean);
+                                                let next: string[];
+                                                if (isChecked) {
+                                                  if (current.length <= 1) return; // Prevent empty selection
+                                                  next = current.filter((v) => v !== item.value);
+                                                } else {
+                                                  next = [...current, item.value];
+                                                }
+                                                setEditProjFunding(next.join(','));
+                                              }}
+                                              className="accent-amber-500 rounded h-3.5 w-3.5"
+                                            />
+                                            <span className="font-medium group-hover:text-amber-600 transition-colors">
+                                              {item.title}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-slate-700 text-xxs font-bold mb-1">Akses & Publikasi</label>
+                                    <select
+                                      value={editProjStatus}
+                                      onChange={(e: any) => setEditProjStatus(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                    >
+                                      <option value="public">Publik (Terbuka)</option>
+                                      <option value="private">Privat (Internal)</option>
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-slate-700 text-xxs font-bold mb-1">Status Proyek</label>
+                                    <select
+                                      value={editProjProjectStatus}
+                                      onChange={(e: any) => setEditProjProjectStatus(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                    >
+                                      <option value="pending">Pending</option>
+                                      <option value="berjalan">Berjalan</option>
+                                      <option value="selesai">Selesai</option>
+                                      <option value="batal">Batal</option>
+                                    </select>
+                                  </div>
+
+                                  <div className="sm:col-span-2">
+                                    <label className="block text-slate-700 text-xxs font-bold mb-1">Target Anggaran (IDR)</label>
+                                    <input
+                                      type="number"
+                                      value={editProjBudget}
+                                      onChange={(e) => setEditProjBudget(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                    />
+                                  </div>
+
+                                  <div className="sm:col-span-2">
+                                    <label className="block text-slate-700 text-xxs font-bold mb-1">Deskripsi Ruang Lingkup</label>
+                                    <textarea
+                                      rows={2}
+                                      value={editProjDescription}
+                                      onChange={(e) => setEditProjDescription(e.target.value)}
+                                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="flex justify-end gap-2 pt-2 border-t border-slate-150">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingProjectId(null)}
+                                    className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xxs font-bold hover:bg-slate-300 transition cursor-pointer"
+                                  >
+                                    Batal
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateProject(p.id)}
+                                    className="px-4 py-1.5 bg-amber-600 text-white rounded-lg text-xxs font-bold hover:bg-amber-550 transition flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Check className="h-3 w-3" />
+                                    Simpan Perubahan
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                                <div className="space-y-1.5 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase font-mono border ${
+                                      p.projectStatus === "selesai"
+                                        ? "bg-sky-50 text-sky-700 border-sky-100"
+                                        : p.projectStatus === "batal"
+                                        ? "bg-rose-50 text-rose-750 border-rose-100"
+                                        : p.projectStatus === "pending"
+                                        ? "bg-amber-50 text-amber-700 border-amber-100"
+                                        : "bg-emerald-50 text-emerald-700 border-emerald-100 animate-pulse"
+                                    }`}>
+                                      STATUS: {p.projectStatus || "berjalan"}
+                                    </span>
+                                    {summary?.projectConfig?.id === p.id && (
+                                      <span className="text-[9px] bg-red-100 text-red-800 border border-red-200 font-extrabold px-2 py-0.5 rounded-md font-mono">
+                                        AKTIF SEKARANG
+                                      </span>
+                                    )}
+                                    <span className="text-[9px] bg-slate-150 text-slate-600 font-mono px-1.5 py-0.5 rounded">
+                                      Tipe: {p.type === 'baru' ? 'Baru' : p.type === 'renovasi' ? 'Renovasi' : 'Alih Fungsi'}
+                                    </span>
+                                  </div>
+                                  <h5 className="text-xs font-bold text-slate-855">{p.name}</h5>
+                                  <p className="text-xxs text-slate-500 leading-relaxed font-sans line-clamp-2">
+                                    {p.description}
+                                  </p>
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1.5 text-[10px] font-mono text-slate-500 border-t border-slate-100 pb-0.5">
+                                    <div>
+                                      Target Budget: <span className="font-bold text-slate-700">{formatCurrency(p.budget)}</span>
+                                    </div>
+                                    <div>
+                                      Tanggal Mulai: <span className="font-bold text-slate-600">
+                                        {p.initializedAt ? new Date(p.initializedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      Inisiator: <span className="font-bold text-slate-600">{p.initializedBy || "Super Admin"}</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex sm:flex-col gap-2 shrink-0 sm:self-center">
+                                  <button
+                                    onClick={() => startEditProject(p)}
+                                    className="flex-1 sm:flex-none py-1.5 px-3 border border-amber-200 bg-amber-50 text-amber-800 rounded-lg hover:bg-amber-100 transition text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    Edit Status & Info
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProject(p.id)}
+                                    className="flex-1 sm:flex-none py-1.5 px-3 border border-red-250 bg-red-50 text-red-800 rounded-lg hover:bg-red-100 transition text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    Hapus Proyek
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
                 <form onSubmit={handleInitializeProject} className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-8 shadow-xs">
                   
                   {/* 1. Project Basic Details */}
                   <div className="space-y-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-2">1. Parameter Utama Proyek</h4>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-2">Inisialisasi Proyek Baru</h4>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="sm:col-span-2">
@@ -1846,16 +1970,44 @@ $$ LANGUAGE plpgsql;`}
                       </div>
 
                       <div>
-                        <label className="block text-slate-700 text-xs font-bold mb-1">Sumber Dana Utama *</label>
-                        <select
-                          value={newProjFunding}
-                          onChange={(e: any) => setNewProjFunding(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
-                        >
-                          <option value="donasi">Donasi Jamaah / Swadaya Masyarakat</option>
-                          <option value="perusahaan">Pihak Ketiga / Perusahaan (Sponsorship)</option>
-                          <option value="pribadi">Kas Internal / Dana Pribadi Organisasi</option>
-                        </select>
+                        <label className="block text-slate-700 text-xs font-bold mb-1.5">Metode & Sumber Pendanaan *</label>
+                        <div className="space-y-2.5 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                          {[
+                            { value: 'donasi', title: 'Donasi Swadaya', desc: 'Kotak amal, sumbangan jamaah & sayap sosial' },
+                            { value: 'perusahaan', title: 'Sponsor / Perusahaan', desc: 'CSR korporasi, hibah instansi, atau kemitraan' },
+                            { value: 'pribadi', title: 'Kas Internal', desc: 'Dana kas masjid, aset produktif, atau modal yayasan' },
+                          ].map((item) => {
+                            const isChecked = (newProjFunding || '').split(',').includes(item.value);
+                            return (
+                              <label key={item.value} className="flex items-start gap-2.5 cursor-pointer select-none group text-xs text-slate-700 leading-tight">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    const current = (newProjFunding || '').split(',').filter(Boolean);
+                                    let next: string[];
+                                    if (isChecked) {
+                                      if (current.length <= 1) return; // Prevent empty selection
+                                      next = current.filter((v) => v !== item.value);
+                                    } else {
+                                      next = [...current, item.value];
+                                    }
+                                    setNewProjFunding(next.join(','));
+                                  }}
+                                  className="mt-0.5 accent-amber-500 rounded h-4 w-4 border-slate-350"
+                                />
+                                <div className="flex-1">
+                                  <span className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">
+                                    {item.title}
+                                  </span>
+                                  <span className="block text-[10px] text-slate-500 mt-0.5">
+                                    {item.desc}
+                                  </span>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div>

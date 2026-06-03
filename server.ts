@@ -415,13 +415,13 @@ function getDBState() {
   if (!state.projectConfig) {
     state.projectConfig = {
       id: "project-default",
-      name: "Proyek Ekspansi Pusat Komunitas Al-Noor",
+      name: "Proyek Utama Pembangunan Masjid At-Taqwa",
       type: "renovasi",
       fundingSource: "donasi",
       status: "public",
       projectStatus: "berjalan",
       budget: 1600000000,
-      description: "Ekspansi fasilitas ibadah dan pusat pendidikan komunitas Al-Noor.",
+      description: "Pembangunan dan perluasan kapasitas ibadah utama serta fasilitas dakwah Masjid At-Taqwa.",
       initialized: true,
       initializedAt: "2026-05-10T14:30:00Z"
     };
@@ -433,13 +433,13 @@ function getDBState() {
     state.projects = [
       {
         id: "project-default",
-        name: "Proyek Ekspansi Pusat Komunitas Al-Noor",
+        name: "Proyek Utama Pembangunan Masjid At-Taqwa",
         type: "renovasi",
         fundingSource: "donasi",
         status: "public",
         projectStatus: "berjalan",
         budget: 1600000000,
-        description: "Ekspansi fasilitas ibadah dan pusat pendidikan komunitas Al-Noor.",
+        description: "Pembangunan dan perluasan kapasitas ibadah utama serta fasilitas dakwah Masjid At-Taqwa.",
         initializedAt: "2026-05-10T14:30:00Z",
         initializedBy: "Super Admin"
       }
@@ -891,6 +891,117 @@ async function addAuditLog(logData: any) {
   saveDBState(db);
 }
 
+async function getProjectConfigFromDb() {
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      const config = await prisma.projectConfig.findFirst({
+        orderBy: { updatedAt: "desc" }
+      });
+      if (config) {
+        return {
+          id: config.id,
+          name: config.name,
+          type: config.type,
+          fundingSource: config.fundingSource,
+          status: config.status,
+          projectStatus: config.projectStatus,
+          budget: Number(config.budget),
+          description: config.description,
+          initialized: config.initialized,
+          initializedAt: config.initializedAt.toISOString(),
+          initializedBy: config.initializedBy
+        };
+      } else {
+        // Seed database table from json state if empty
+        const db = getDBState();
+        if (db.projectConfig) {
+          const budgetVal = Number(db.projectConfig.budget || 0);
+          const seeded = await prisma.projectConfig.create({
+            data: {
+              id: db.projectConfig.id || "project-default",
+              name: db.projectConfig.name || "Proyek Utama Pembangunan Masjid At-Taqwa",
+              type: db.projectConfig.type || "renovasi",
+              fundingSource: db.projectConfig.fundingSource || "donasi",
+              status: db.projectConfig.status || "public",
+              projectStatus: db.projectConfig.projectStatus || db.projectConfig.status || "berjalan",
+              budget: budgetVal,
+              description: db.projectConfig.description || "Ekspansi...",
+              initialized: db.projectConfig.initialized !== false,
+              initializedAt: db.projectConfig.initializedAt ? new Date(db.projectConfig.initializedAt) : new Date(),
+              initializedBy: db.projectConfig.initializedBy || "Super Admin"
+            }
+          });
+          return {
+            id: seeded.id,
+            name: seeded.name,
+            type: seeded.type,
+            fundingSource: seeded.fundingSource,
+            status: seeded.status,
+            projectStatus: seeded.projectStatus,
+            budget: Number(seeded.budget),
+            description: seeded.description,
+            initialized: seeded.initialized,
+            initializedAt: seeded.initializedAt.toISOString(),
+            initializedBy: seeded.initializedBy
+          };
+        }
+      }
+    } catch (err) {
+      console.error("Prisma getProjectConfigFromDb failed, falling back", err);
+    }
+  }
+  return getDBState().projectConfig;
+}
+
+async function getProjectsFromDb() {
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      const projects = await prisma.project.findMany({
+        orderBy: { createdAt: "desc" }
+      });
+      if (projects.length > 0) {
+        return projects.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          type: p.type,
+          fundingSource: p.fundingSource,
+          status: p.status,
+          projectStatus: p.projectStatus,
+          budget: Number(p.budget),
+          description: p.description,
+          initializedAt: p.initializedAt ? p.initializedAt.toISOString() : null,
+          initializedBy: p.initializedBy
+        }));
+      } else {
+        // Seed project table from json state if empty
+        const db = getDBState();
+        const list = db.projects || [];
+        if (list.length > 0) {
+          const records = list.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            type: p.type || "renovasi",
+            fundingSource: p.fundingSource || "donasi",
+            status: p.status || "public",
+            projectStatus: p.projectStatus || p.status || "berjalan",
+            budget: Number(p.budget || 0),
+            description: p.description || "",
+            initializedAt: p.initializedAt ? new Date(p.initializedAt) : new Date(),
+            initializedBy: p.initializedBy || "Super Admin"
+          }));
+          await prisma.project.createMany({ data: records });
+          return list;
+        }
+      }
+    } catch (err) {
+      console.error("Prisma getProjectsFromDb failed, falling back", err);
+    }
+  }
+  return getDBState().projects || [];
+}
+
 // Global Authentication JWT Middleware
 function authenticateToken(req: any, res: any, next: any) {
   const authHeader = req.headers["authorization"];
@@ -1007,9 +1118,241 @@ app.get("/api/auth/me", authenticateToken, (req: any, res) => {
 });
 
 // GET Project configuration
-app.get("/api/project-config", (req, res) => {
+app.get("/api/project-config", async (req, res) => {
+  const config = await getProjectConfigFromDb();
+  res.json(config || { initialized: false });
+});
+
+// GET all projects
+app.get("/api/projects", authenticateToken, async (req, res) => {
+  const projects = await getProjectsFromDb();
+  res.json(projects);
+});
+
+// PUT update project by admin
+app.put("/api/projects/:id", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  const { id } = req.params;
+  const { name, type, fundingSource, status, projectStatus, budget, description } = req.body;
+
+  if (!name || !type || !fundingSource || !status || !projectStatus || !budget || !description) {
+    return res.status(400).json({ error: "Semua isian formulir proyek wajib diisi." });
+  }
+
   const db = getDBState();
-  res.json(db.projectConfig || { initialized: false });
+  if (!db.projects) {
+    db.projects = [];
+  }
+
+  const projectIndex = db.projects.findIndex((p: any) => p.id === id);
+  if (projectIndex === -1 && !process.env.DATABASE_URL) {
+    return res.status(404).json({ error: "Proyek tidak ditemukan." });
+  }
+
+  const updatedProject: any = {
+    id,
+    name,
+    type,
+    fundingSource,
+    status,
+    projectStatus,
+    budget: Number(budget),
+    description,
+    initializedAt: projectIndex !== -1 ? db.projects[projectIndex].initializedAt : new Date().toISOString(),
+    initializedBy: projectIndex !== -1 ? db.projects[projectIndex].initializedBy : "Super Admin"
+  };
+
+  if (projectIndex !== -1) {
+    db.projects[projectIndex] = updatedProject;
+  }
+
+  // If this project is the active project, keep projectConfig in sync!
+  if (db.projectConfig && db.projectConfig.id === id) {
+    db.projectConfig = {
+      ...db.projectConfig,
+      name,
+      type,
+      fundingSource,
+      status,
+      projectStatus,
+      budget: Number(budget),
+      description
+    };
+  }
+
+  // Add an audit log for this update
+  const auditUpdate = {
+    id: "audit-update-" + Date.now(),
+    timestamp: new Date().toISOString(),
+    action: "UPDATE" as any,
+    tableName: "Budget" as any,
+    recordId: id,
+    changedBy: req.user.name || req.user.email,
+    details: `Admin memperbarui status proyek "${name}" menjadi: ${projectStatus.toUpperCase()}. Anggaran: Rp ${Number(budget).toLocaleString("id-ID")}`
+  };
+  if (!db.auditLogs) db.auditLogs = [];
+  db.auditLogs.unshift(auditUpdate);
+
+  saveDBState(db);
+
+  // Prisma Sync (PostgreSQL)
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      await prisma.project.upsert({
+        where: { id },
+        update: {
+          name,
+          type,
+          fundingSource,
+          status,
+          projectStatus,
+          budget: Number(budget),
+          description
+        },
+        create: {
+          id,
+          name,
+          type,
+          fundingSource,
+          status,
+          projectStatus,
+          budget: Number(budget),
+          description,
+          initializedBy: req.user.name || req.user.email
+        }
+      });
+
+      const activeConfig = await prisma.projectConfig.findFirst({
+        orderBy: { updatedAt: "desc" }
+      });
+      if (activeConfig && activeConfig.id === id) {
+        await prisma.projectConfig.update({
+          where: { id },
+          data: {
+            name,
+            type,
+            fundingSource,
+            status,
+            projectStatus,
+            budget: Number(budget),
+            description
+          }
+        });
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          action: "UPDATE",
+          tableName: "Budget",
+          recordId: id,
+          changedBy: req.user.name || req.user.email,
+          details: `Admin memperbarui status proyek "${name}" menjadi: ${projectStatus.toUpperCase()}. Anggaran: Rp ${Number(budget).toLocaleString("id-ID")}`
+        }
+      });
+    } catch (err) {
+      console.error("Prisma update project failed:", err);
+    }
+  }
+
+  const finalConfig = prisma ? await getProjectConfigFromDb() : db.projectConfig;
+  res.json({ success: true, project: updatedProject, projectConfig: finalConfig });
+});
+
+// DELETE project by admin
+app.delete("/api/projects/:id", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  const { id } = req.params;
+  const db = getDBState();
+
+  if (!db.projects) {
+    db.projects = [];
+  }
+
+  const projectIndex = db.projects.findIndex((p: any) => p.id === id);
+  let deletedProjName = "Project";
+  
+  if (projectIndex !== -1) {
+    deletedProjName = db.projects[projectIndex].name;
+    db.projects.splice(projectIndex, 1);
+  }
+
+  // If the deleted project is the active one, pick the next available or set initialized: false
+  if (db.projectConfig && db.projectConfig.id === id) {
+    if (db.projects.length > 0) {
+      const nextActive = db.projects[0];
+      db.projectConfig = {
+        ...nextActive,
+        initialized: true
+      };
+    } else {
+      db.projectConfig = { initialized: false };
+    }
+  }
+
+  // Add an audit log for this deletion
+  const auditDelete = {
+    id: "audit-delete-" + Date.now(),
+    timestamp: new Date().toISOString(),
+    action: "DELETE" as any,
+    tableName: "Budget" as any,
+    recordId: id,
+    changedBy: req.user.name || req.user.email,
+    details: `Admin menghapus proyek "${deletedProjName}".`
+  };
+  if (!db.auditLogs) db.auditLogs = [];
+  db.auditLogs.unshift(auditDelete);
+
+  saveDBState(db);
+
+  // Prisma Sync (PostgreSQL)
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      if (deletedProjName === "Project") {
+        const found = await prisma.project.findUnique({ where: { id } });
+        if (found) deletedProjName = found.name;
+      }
+
+      await prisma.project.delete({ where: { id } });
+      await prisma.projectConfig.deleteMany({ where: { id } });
+
+      const remaining = await prisma.project.findFirst({
+        orderBy: { createdAt: "desc" }
+      });
+
+      if (remaining) {
+        await prisma.projectConfig.create({
+          data: {
+            id: remaining.id,
+            name: remaining.name,
+            type: remaining.type,
+            fundingSource: remaining.fundingSource,
+            status: remaining.status,
+            projectStatus: remaining.projectStatus,
+            budget: remaining.budget,
+            description: remaining.description,
+            initialized: true,
+            initializedAt: remaining.initializedAt,
+            initializedBy: remaining.initializedBy
+          }
+        });
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          action: "DELETE",
+          tableName: "Budget",
+          recordId: id,
+          changedBy: req.user.name || req.user.email,
+          details: `Admin menghapus proyek "${deletedProjName}".`
+        }
+      });
+    } catch (err) {
+      console.error("Prisma delete project failed:", err);
+    }
+  }
+
+  const finalConfig = prisma ? await getProjectConfigFromDb() : db.projectConfig;
+  res.json({ success: true, message: "Proyek berhasil dihapus.", projectConfig: finalConfig });
 });
 
 // POST Project initialization (Admin Only)
@@ -1050,18 +1393,27 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
   try {
     const db = getDBState();
 
+    const projectId = "project-" + Date.now();
+
     // 1. Set the main project config
     db.projectConfig = {
+      id: projectId,
       name: projectName,
       type: projectType,
       fundingSource,
       status: projectStatus,
+      projectStatus: "berjalan",
       budget: Number(budget),
       description,
       initialized: true,
       initializedAt: new Date().toISOString(),
       initializedBy: req.user.name || req.user.email
     };
+
+    // Ensure projects array exists to track projects made by super admin
+    if (!db.projects) {
+      db.projects = [];
+    }
 
     // 2. Clear old data OR establish new budgets dynamically using percentages if requested
     const rabs = [
@@ -1079,10 +1431,13 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
       db.progress = [];
       db.auditLogs = [];
       db.budgets = rabs;
+      db.projects = []; // Clear old projects for a fresh start!
     } else {
       // Just adjust the budgets to the new percentages to fit the config
       db.budgets = rabs;
     }
+
+    db.projects.push({ ...db.projectConfig });
 
     // 3. Establish Treasurer and Project Manager users
     const adminUsers = db.users.filter((user: any) => user.role === "ADMIN");
@@ -1134,9 +1489,43 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
           await prisma.physicalProgress.deleteMany({});
           await prisma.auditLog.deleteMany({});
           await prisma.budget.deleteMany({});
+          await prisma.projectConfig.deleteMany({});
+          await prisma.project.deleteMany({});
         } else {
           await prisma.budget.deleteMany({});
         }
+
+        // Write Project and Config records in Postgres
+        await prisma.projectConfig.create({
+          data: {
+            id: projectId,
+            name: projectName,
+            type: projectType,
+            fundingSource,
+            status: projectStatus,
+            projectStatus: "berjalan",
+            budget: Number(budget),
+            description,
+            initialized: true,
+            initializedAt: new Date(),
+            initializedBy: req.user.name || req.user.email
+          }
+        });
+
+        await prisma.project.create({
+          data: {
+            id: projectId,
+            name: projectName,
+            type: projectType,
+            fundingSource,
+            status: projectStatus,
+            projectStatus: "berjalan",
+            budget: Number(budget),
+            description,
+            initializedAt: new Date(),
+            initializedBy: req.user.name || req.user.email
+          }
+        });
 
         // Add budgets to Prisma
         const prismaBudgets = rabs.map(b => ({
@@ -1180,10 +1569,11 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
       }
     }
 
+    const finalConfig = prisma ? await getProjectConfigFromDb() : db.projectConfig;
     res.json({
       success: true,
       message: "Proyek berhasil dikonfigurasi dan disiapkan bersama akun Bendahara & Project Manager baru.",
-      projectConfig: db.projectConfig
+      projectConfig: finalConfig
     });
   } catch (error: any) {
     console.error("Project initialization error:", error);
@@ -1236,7 +1626,7 @@ app.get("/api/financial-summary", async (req, res) => {
       currentCashBalance,
       totalExpenditures: expendituresSum,
       physicalProgressPercent: currentProgressPercent,
-      projectConfig: db.projectConfig,
+      projectConfig: await getProjectConfigFromDb(),
       // Add categories analysis for charts
       expendituresByCategory: {
         Material: expenditures.filter((e: any) => e.category === "Material").reduce((s: number, e: any) => s + e.totalPrice, 0),
@@ -1508,62 +1898,66 @@ app.get("/api/audit-logs", async (req, res) => {
   }
 });
 
-// 6. Project Architecture structure for display
-app.get("/api/folder-structure", (req, res) => {
-  res.json({
-    name: "smartbuild-root",
-    type: "directory",
-    children: [
-      {
-        name: "prisma",
-        type: "directory",
-        children: [
-          { name: "schema.prisma", type: "file", description: "Prisma entity relational definitions mapping Users, Donations, Budgets, Expenditures." },
-          { name: "migrations/init.sql", type: "file", description: "Production PostgreSQL database installation script with Audit Logging Triggers." }
-        ]
-      },
-      {
-        name: "server",
-        type: "directory",
-        children: [
-          {
-            name: "controllers",
-            type: "directory",
-            children: [
-              { name: "donationController.ts", type: "file", description: "Validates transaction details, checks image proofs, queues pending balances." },
-              { name: "expenditureController.ts", type: "file", description: "Enforces strict financial validations rejecting transactions without receipt images." }
-            ]
-          },
-          {
-            name: "routes",
-            type: "directory",
-            children: [
-              { name: "api.ts", type: "file", description: "REST server routing endpoints maps transactions onto corresponding actions." }
-            ]
-          },
-          {
-            name: "db",
-            type: "directory",
-            children: [
-              { name: "client.ts", type: "file", description: "Prisma client manager configured with pooling limits for serverless NeonDB Postgres instance." }
-            ]
-          }
-        ]
-      },
-      {
-        name: "src",
-        type: "directory",
-        children: [
-          { name: "components", type: "directory" },
-          { name: "App.tsx", type: "file", description: "Single-view high fidelity real-time transparency dashboard UI." },
-          { name: "types.ts", type: "file", description: "Declared shared strict interfaces representing financial records." },
-          { name: "main.tsx", type: "file", description: "Vite SPA rendering node." }
-        ]
-      },
-      { name: "server.ts", type: "file", description: "Bootloader entry-point hosting full-stack node services." },
-      { name: "package.json", type: "file", description: "Project manifest, scripts, and production server modules." }
-    ]
-  });
+// 5.5 Export full database to JSON/CSV (Admin only)
+app.get("/api/export-database", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  try {
+    const prisma = await getPrismaClient();
+    
+    let configs = [];
+    let projects = [];
+    let users = [];
+    let donations = [];
+    let expenditures = [];
+    let budgets = [];
+    let physicalProgress = [];
+    let auditLogs = [];
+
+    if (process.env.DATABASE_URL) {
+      configs = await prisma.projectConfig.findMany();
+      projects = await prisma.project.findMany();
+      users = await prisma.user.findMany({
+        select: { id: true, email: true, name: true, role: true, createdAt: true }
+      });
+      donations = await prisma.donation.findMany();
+      expenditures = await prisma.expenditure.findMany();
+      budgets = await prisma.budget.findMany();
+      physicalProgress = await prisma.physicalProgress.findMany();
+      auditLogs = await prisma.auditLog.findMany();
+    } else {
+      const db = getDBState();
+      configs = db.projectConfig ? [db.projectConfig] : [];
+      projects = db.projects || [];
+      users = (db.users || []).map((u: any) => ({ id: u.id, email: u.email, name: u.name, role: u.role }));
+      donations = db.donations || [];
+      expenditures = db.expenditures || [];
+      budgets = db.budgets || [];
+      physicalProgress = db.physicalProgress || [];
+      auditLogs = db.auditLogs || [];
+    }
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      exportedBy: req.user.name || req.user.email,
+      databaseType: process.env.DATABASE_URL ? "Production Database" : "In-Memory Sandbox",
+      data: {
+        configs,
+        projects,
+        users,
+        donations,
+        expenditures,
+        budgets,
+        physicalProgress,
+        auditLogs
+      }
+    };
+
+    res.setHeader("Content-Disposition", "attachment; filename=smartbuild_backup.json");
+    res.setHeader("Content-Type", "application/json");
+    res.json(exportData);
+  } catch (err) {
+    console.error("GET export database error:", err);
+    res.status(500).json({ error: "Failed to export project database. Please try again later." });
+  }
 });
 
 // Setup development devServer or production asset pipelines
