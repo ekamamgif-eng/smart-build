@@ -411,6 +411,42 @@ function getDBState() {
     saveDBState(state);
   }
 
+  // Auto-seed default project configurations if missing in sandbox memory database
+  if (!state.projectConfig) {
+    state.projectConfig = {
+      id: "project-default",
+      name: "Proyek Ekspansi Pusat Komunitas Al-Noor",
+      type: "renovasi",
+      fundingSource: "donasi",
+      status: "public",
+      projectStatus: "berjalan",
+      budget: 1600000000,
+      description: "Ekspansi fasilitas ibadah dan pusat pendidikan komunitas Al-Noor.",
+      initialized: true,
+      initializedAt: "2026-05-10T14:30:00Z"
+    };
+    saveDBState(state);
+  }
+
+  // Ensure projects array exists to track projects made by super admin
+  if (!state.projects) {
+    state.projects = [
+      {
+        id: "project-default",
+        name: "Proyek Ekspansi Pusat Komunitas Al-Noor",
+        type: "renovasi",
+        fundingSource: "donasi",
+        status: "public",
+        projectStatus: "berjalan",
+        budget: 1600000000,
+        description: "Ekspansi fasilitas ibadah dan pusat pendidikan komunitas Al-Noor.",
+        initializedAt: "2026-05-10T14:30:00Z",
+        initializedBy: "Super Admin"
+      }
+    ];
+    saveDBState(state);
+  }
+
   return state;
 }
 
@@ -970,6 +1006,191 @@ app.get("/api/auth/me", authenticateToken, (req: any, res) => {
   res.json({ user: req.user });
 });
 
+// GET Project configuration
+app.get("/api/project-config", (req, res) => {
+  const db = getDBState();
+  res.json(db.projectConfig || { initialized: false });
+});
+
+// POST Project initialization (Admin Only)
+app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  const {
+    projectName,
+    projectType,
+    fundingSource,
+    projectStatus,
+    budget,
+    description,
+    treasurerEmail,
+    treasurerName,
+    treasurerPassword,
+    pmEmail,
+    pmName,
+    pmPassword,
+    startFresh
+  } = req.body;
+
+  if (
+    !projectName ||
+    !projectType ||
+    !fundingSource ||
+    !projectStatus ||
+    !budget ||
+    !description ||
+    !treasurerEmail ||
+    !treasurerName ||
+    !treasurerPassword ||
+    !pmEmail ||
+    !pmName ||
+    !pmPassword
+  ) {
+    return res.status(400).json({ error: "Semua isian formulir konfigurasi wajib diisi untuk memulai proyek." });
+  }
+
+  try {
+    const db = getDBState();
+
+    // 1. Set the main project config
+    db.projectConfig = {
+      name: projectName,
+      type: projectType,
+      fundingSource,
+      status: projectStatus,
+      budget: Number(budget),
+      description,
+      initialized: true,
+      initializedAt: new Date().toISOString(),
+      initializedBy: req.user.name || req.user.email
+    };
+
+    // 2. Clear old data OR establish new budgets dynamically using percentages if requested
+    const rabs = [
+      { id: "rab-1", itemName: "Pematangan Lahan & Organisasi Fondasi", category: "Foundation" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
+      { id: "rab-2", itemName: "Pekerjaan Struktur Kolom & Beton", category: "Structure" as any, targetAmount: Math.round(Number(budget) * 0.30), spentAmount: 0 },
+      { id: "rab-3", itemName: "Konstruksi Rangka Atap Utama", category: "Roofing" as any, targetAmount: Math.round(Number(budget) * 0.20), spentAmount: 0 },
+      { id: "rab-4", itemName: "Sistem Utilitas MEP & Kelistrikan/Sanitasi", category: "MEP" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
+      { id: "rab-5", itemName: "Finishing Cat, Tegel & Arsitektural", category: "Finishing" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
+      { id: "rab-6", itemName: "Legalitas, Perizinan & Biaya Operasional", category: "Operational" as any, targetAmount: Math.round(Number(budget) * 0.05), spentAmount: 0 },
+    ];
+
+    if (startFresh) {
+      db.donations = [];
+      db.expenditures = [];
+      db.progress = [];
+      db.auditLogs = [];
+      db.budgets = rabs;
+    } else {
+      // Just adjust the budgets to the new percentages to fit the config
+      db.budgets = rabs;
+    }
+
+    // 3. Establish Treasurer and Project Manager users
+    const adminUsers = db.users.filter((user: any) => user.role === "ADMIN");
+
+    // Create Treasurer user
+    const treasurerUser = {
+      id: "user-treasurer-" + Date.now(),
+      email: treasurerEmail.toLowerCase(),
+      name: treasurerName,
+      role: "TREASURER" as any,
+      password: bcrypt.hashSync(treasurerPassword, 10),
+      createdAt: new Date().toISOString()
+    };
+
+    // Create PM user
+    const pmUser = {
+      id: "user-pm-" + Date.now(),
+      email: pmEmail.toLowerCase(),
+      name: pmName,
+      role: "PROJECT_MANAGER" as any,
+      password: bcrypt.hashSync(pmPassword, 10),
+      createdAt: new Date().toISOString()
+    };
+
+    db.users = [...adminUsers, treasurerUser, pmUser];
+
+    // Log the audit
+    const auditSetup = {
+      id: "audit-setup-" + Date.now(),
+      timestamp: new Date().toISOString(),
+      action: "CREATE" as any,
+      tableName: "Budget" as any,
+      recordId: "setup-config",
+      changedBy: req.user.name || req.user.email,
+      details: `Project "${projectName}" initialized. Budget set to Rp ${Number(budget).toLocaleString("id-ID")}. Treasurer & Project Manager users updated.`
+    };
+    db.auditLogs.unshift(auditSetup);
+
+    // Save state
+    saveDBState(db);
+
+    // Dynamic Prisma sync (if Prisma client exists)
+    const prisma = await getPrismaClient();
+    if (prisma) {
+      try {
+        if (startFresh) {
+          await prisma.donation.deleteMany({});
+          await prisma.expenditure.deleteMany({});
+          await prisma.physicalProgress.deleteMany({});
+          await prisma.auditLog.deleteMany({});
+          await prisma.budget.deleteMany({});
+        } else {
+          await prisma.budget.deleteMany({});
+        }
+
+        // Add budgets to Prisma
+        const prismaBudgets = rabs.map(b => ({
+          itemName: b.itemName,
+          category: b.category,
+          targetAmount: b.targetAmount
+        }));
+        await prisma.budget.createMany({ data: prismaBudgets });
+
+        // Update Users in Prisma
+        await prisma.user.deleteMany({ where: { role: { in: ["TREASURER", "PROJECT_MANAGER"] } } });
+        await prisma.user.create({
+          data: {
+            email: treasurerEmail.toLowerCase(),
+            name: treasurerName,
+            role: "TREASURER" as any,
+            password: bcrypt.hashSync(treasurerPassword, 10)
+          }
+        });
+        await prisma.user.create({
+          data: {
+            email: pmEmail.toLowerCase(),
+            name: pmName,
+            role: "PROJECT_MANAGER" as any,
+            password: bcrypt.hashSync(pmPassword, 10)
+          }
+        });
+
+        // Add Audit setup to Prisma
+        await prisma.auditLog.create({
+          data: {
+            action: "CREATE",
+            tableName: "Budget",
+            recordId: "setup-config",
+            changedBy: req.user.name || req.user.email,
+            details: `Project "${projectName}" initialized. Budget distributed for standard categories.`
+          }
+        });
+      } catch (e) {
+        console.error("Prisma config synchronization failed", e);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Proyek berhasil dikonfigurasi dan disiapkan bersama akun Bendahara & Project Manager baru.",
+      projectConfig: db.projectConfig
+    });
+  } catch (error: any) {
+    console.error("Project initialization error:", error);
+    res.status(500).json({ error: "Gagal memproses konfigurasi proyek baru." });
+  }
+});
+
 // Upload File Endpoint (menerima file upload dan mengembalikan url)
 app.post("/api/upload", upload.single("file"), (req, res) => {
   if (!req.file) {
@@ -1007,12 +1228,15 @@ app.get("/api/financial-summary", async (req, res) => {
       ? progress[progress.length - 1].percentage 
       : 0;
 
+    const db = getDBState();
+
     res.json({
       totalRaised: approvedDonationsSum,
       totalRABTarget,
       currentCashBalance,
       totalExpenditures: expendituresSum,
       physicalProgressPercent: currentProgressPercent,
+      projectConfig: db.projectConfig,
       // Add categories analysis for charts
       expendituresByCategory: {
         Material: expenditures.filter((e: any) => e.category === "Material").reduce((s: number, e: any) => s + e.totalPrice, 0),

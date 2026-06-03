@@ -27,7 +27,8 @@ import {
   History,
   Code,
   LogOut,
-  UserCheck
+  UserCheck,
+  Settings
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -108,6 +109,17 @@ export default function App() {
     physicalProgressPercent: number;
     expendituresByCategory: Record<string, number>;
     donationsByPayment: Record<string, number>;
+    projectConfig?: {
+      name: string;
+      type: 'baru' | 'renovasi' | 'alih_fungsi';
+      fundingSource: 'perusahaan' | 'donasi' | 'pribadi';
+      status: 'public' | 'private';
+      budget: number;
+      description: string;
+      initialized: boolean;
+      initializedAt?: string;
+      initializedBy?: string;
+    };
   } | null>(null);
 
   const [donations, setDonations] = useState<Donation[]>([]);
@@ -147,6 +159,22 @@ export default function App() {
   const [formSuccess, setFormSuccess] = useState("");
 
   const [schemaSelection, setSchemaSelection] = useState<"prisma" | "postgresql">("prisma");
+
+  // Project Config states
+  const [newProjName, setNewProjName] = useState("");
+  const [newProjType, setNewProjType] = useState<"baru" | "renovasi" | "alih_fungsi">("baru");
+  const [newProjFunding, setNewProjFunding] = useState<"perusahaan" | "donasi" | "pribadi">("donasi");
+  const [newProjStatus, setNewProjStatus] = useState<"public" | "private">("public");
+  const [newProjBudget, setNewProjBudget] = useState("");
+  const [newProjDescription, setNewProjDescription] = useState("");
+  const [newProjTreasurerName, setNewProjTreasurerName] = useState("");
+  const [newProjTreasurerEmail, setNewProjTreasurerEmail] = useState("");
+  const [newProjTreasurerPassword, setNewProjTreasurerPassword] = useState("");
+  const [newProjPmName, setNewProjPmName] = useState("");
+  const [newProjPmEmail, setNewProjPmEmail] = useState("");
+  const [newProjPmPassword, setNewProjPmPassword] = useState("");
+  const [newProjStartFresh, setNewProjStartFresh] = useState(true);
+  const [projConfigLoading, setProjConfigLoading] = useState(false);
 
   // Fetch core data from full-stack APIs
   const fetchAllData = async () => {
@@ -404,6 +432,98 @@ export default function App() {
     setTimeout(() => setFormSuccess(""), 4000);
   };
 
+  const handleInitializeProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    setFormSuccess("");
+
+    if (!newProjName.trim()) {
+      setFormError("Nama proyek wajib diisi.");
+      return;
+    }
+    if (!newProjBudget || Number(newProjBudget) <= 0) {
+      setFormError("Anggaran proyek wajib berupa angka positif.");
+      return;
+    }
+    if (!newProjDescription.trim()) {
+      setFormError("Deskripsi rencana proyek wajib diisi.");
+      return;
+    }
+    if (!newProjTreasurerName.trim() || !newProjTreasurerEmail.trim() || !newProjTreasurerPassword.trim()) {
+      setFormError("Detail akun Bendahara (Nama, Email, Password) wajib diisi.");
+      return;
+    }
+    if (!newProjPmName.trim() || !newProjPmEmail.trim() || !newProjPmPassword.trim()) {
+      setFormError("Detail akun Project Manager (Nama, Email, Password) wajib diisi.");
+      return;
+    }
+
+    if (newProjTreasurerPassword.length < 4 || newProjPmPassword.length < 4) {
+      setFormError("Kata sandi akun pengelola (Bendahara & PM) minimal harus 4 karakter.");
+      return;
+    }
+
+    try {
+      setProjConfigLoading(true);
+      const headersOpt = authToken ? { 
+        "Authorization": `Bearer ${authToken}`,
+        "Content-Type": "application/json"
+      } : {
+        "Content-Type": "application/json"
+      };
+
+      const payload = {
+        projectName: newProjName,
+        projectType: newProjType,
+        fundingSource: newProjFunding,
+        projectStatus: newProjStatus,
+        budget: Number(newProjBudget),
+        description: newProjDescription,
+        treasurerEmail: newProjTreasurerEmail,
+        treasurerName: newProjTreasurerName,
+        treasurerPassword: newProjTreasurerPassword,
+        pmEmail: newProjPmEmail,
+        pmName: newProjPmName,
+        pmPassword: newProjPmPassword,
+        startFresh: newProjStartFresh
+      };
+
+      const response = await fetch("/api/project-config/initialize", {
+        method: "POST",
+        headers: headersOpt,
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFormSuccess(data.message || "Proyek berhasil diinisialisasi!");
+        setTimeout(() => setFormSuccess(""), 5000);
+        
+        // Reset form
+        setNewProjName("");
+        setNewProjBudget("");
+        setNewProjDescription("");
+        setNewProjTreasurerName("");
+        setNewProjTreasurerEmail("");
+        setNewProjTreasurerPassword("");
+        setNewProjPmName("");
+        setNewProjPmEmail("");
+        setNewProjPmPassword("");
+
+        // Refresh database & state
+        fetchAllData();
+        setActiveTab("dashboard");
+      } else {
+        const err = await response.json();
+        setFormError(err.error || "Gagal melakukan inisialisasi proyek.");
+      }
+    } catch (err) {
+      setFormError("Terjadi hambatan koneksi saat mengirim konfigurasi ke server.");
+    } finally {
+      setProjConfigLoading(false);
+    }
+  };
+
   // Combine, sort and filter ledger collections
   const getCombinedLedger = () => {
     const list: Array<{
@@ -486,8 +606,10 @@ export default function App() {
             SB
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-slate-800">Transparansi <span className="text-emerald-600 font-extrabold">SmartBuild</span></h1>
-            <p className="text-[10px] text-slate-550 font-semibold uppercase tracking-wider leading-none mt-0.5">Proyek Ekspansi Pusat Komunitas Al-Noor</p>
+            <h1 className="text-lg font-bold tracking-tight text-slate-800"><span className="text-emerald-600 font-extrabold">SmartBuild</span></h1>
+            <p className="text-[10px] text-slate-550 font-semibold uppercase tracking-wider leading-none mt-0.5">
+              {summary?.projectConfig?.name || "Proyek Ekspansi Pusat Komunitas Al-Noor"}
+            </p>
           </div>
         </div>
 
@@ -501,7 +623,7 @@ export default function App() {
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
             }`}
           >
-            Dashboard Publik
+            Dashboard
           </button>
           <button
             onClick={() => setActiveTab("treasurer")}
@@ -511,7 +633,7 @@ export default function App() {
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
             }`}
           >
-            Portal Bendahara
+            Bendahara
           </button>
           <button
             onClick={() => setActiveTab("pm")}
@@ -521,7 +643,7 @@ export default function App() {
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
             }`}
           >
-            Catatan Proyek (PM)
+            Project Manager
           </button>
           <button
             onClick={() => setActiveTab("architecture")}
@@ -534,14 +656,27 @@ export default function App() {
             <Code className="h-3.5 w-3.5" />
             <span>Spesifikasi Skema</span>
           </button>
+          {currentUser?.role === 'ADMIN' && (
+            <button
+              onClick={() => setActiveTab("config")}
+              className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+                activeTab === "config"
+                  ? "bg-amber-100 text-amber-900 shadow-sm border border-amber-200"
+                  : "text-amber-700 hover:text-amber-900 hover:bg-amber-50"
+              }`}
+            >
+              <Settings className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
+              <span>Inisialisasi Proyek</span>
+            </button>
+          )}
         </nav>
 
         {/* Right Side: Integrity status */}
         <div className="flex items-center gap-4">
           <div className="text-right hidden sm:block">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">STATUS DATABASE</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">DATABASE</p>
             <p className="text-xs text-emerald-500 flex items-center gap-1 font-bold italic justify-end">
-              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> NEON_DB_AKTIF
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> AKTIF
             </p>
           </div>
           <div className="h-10 w-px bg-slate-200 hidden sm:block"></div>
@@ -611,6 +746,16 @@ export default function App() {
         >
           Skema Spek
         </button>
+        {currentUser?.role === 'ADMIN' && (
+          <button
+            onClick={() => setActiveTab("config")}
+            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              activeTab === "config" ? "bg-amber-600 text-white" : "bg-slate-100 text-slate-700"
+            }`}
+          >
+            Inisialisasi
+          </button>
+        )}
       </div>
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
@@ -628,6 +773,61 @@ export default function App() {
             {/* 1. PUBLIC DASHBOARD VIEW */}
             {activeTab === "dashboard" && (
               <div className="space-y-6">
+
+                {/* Project Setup Information Board */}
+                {summary?.projectConfig && (
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div>
+                        <span className="text-[9px] bg-emerald-50 text-emerald-700 font-extrabold px-2.5 py-0.5 rounded uppercase tracking-wider font-mono">
+                          INFORMASI RESMI PROYEK : {summary.projectConfig.status.toUpperCase()}
+                        </span>
+                        <h2 className="text-base font-bold text-slate-800 mt-1">
+                          {summary.projectConfig.name}
+                        </h2>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
+                        <span className="bg-sky-50 text-sky-700 font-bold px-2.5 py-0.5 rounded-md capitalize border border-sky-200">
+                          Tipe: {summary.projectConfig.type === 'baru' ? 'Proyek Baru' : summary.projectConfig.type === 'renovasi' ? 'Renovasi' : 'Alih Fungsi'}
+                        </span>
+                        <span className="bg-purple-50 text-purple-700 font-bold px-2.5 py-0.5 rounded-md capitalize border border-purple-200">
+                          Sumber Dana: {summary.projectConfig.fundingSource === 'perusahaan' ? 'Korporasi / Perusahaan' : summary.projectConfig.fundingSource === 'donasi' ? 'Donasi Swadaya' : 'Pribadi / Internal'}
+                        </span>
+                        <span className="bg-amber-50 text-amber-900 font-bold px-2.5 py-0.5 rounded-md capitalize border border-amber-200">
+                          Peruntukan: {summary.projectConfig.status === 'public' ? 'Publik' : 'Privat'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-slate-600 leading-relaxed font-sans">
+                      {summary.projectConfig.description}
+                    </p>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 font-mono text-[10px] text-slate-500">
+                      <div>
+                        <span className="block font-bold text-slate-400 text-[9px] uppercase tracking-wider">Anggaran Target</span>
+                        <span className="text-xs font-bold text-slate-700">{formatCurrency(summary.projectConfig.budget)}</span>
+                      </div>
+                      <div>
+                        <span className="block font-bold text-slate-400 text-[9px] uppercase tracking-wider">Dimulai Tanggal</span>
+                        <span className="text-xs font-bold text-slate-700">
+                          {summary.projectConfig.initializedAt ? new Date(summary.projectConfig.initializedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block font-bold text-slate-400 text-[9px] uppercase tracking-wider">Inisiator</span>
+                        <span className="text-xs font-bold text-slate-700">{summary.projectConfig.initializedBy || 'Super Admin'}</span>
+                      </div>
+                      <div>
+                        <span className="block font-semibold text-slate-400 text-[9px] uppercase tracking-wider font-mono">Pelacakan Lapangan</span>
+                        <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
+                          TRANSPARAN AKTIF
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Real-time Counter Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1598,6 +1798,243 @@ $$ LANGUAGE plpgsql;`}
 
               </div>
             )}
+
+            {activeTab === "config" && currentUser?.role === "ADMIN" && (
+              <div className="space-y-6 max-w-4xl mx-auto">
+                <div className="bg-amber-50/50 border border-amber-200/60 p-6 rounded-2xl shadow-sm space-y-4 animate-fade-in">
+                  <div className="flex items-center space-x-3 text-amber-800">
+                    <div className="bg-amber-600 text-white p-2 rounded-xl">
+                      <Settings className="h-5 w-5 animate-spin-slow" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm tracking-tight text-slate-800">Inisialisasi & Konfigurasi Utama Proyek</h3>
+                      <p className="text-xxs text-amber-700 font-medium">Layanan ini khusus diakses oleh tingkat administrator tertinggi untuk mendefinisikan rincian proyek baru.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleInitializeProject} className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-8 shadow-xs">
+                  
+                  {/* 1. Project Basic Details */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-2">1. Parameter Utama Proyek</h4>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="sm:col-span-2">
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Nama Proyek Rencana *</label>
+                        <input
+                          type="text"
+                          required
+                          value={newProjName}
+                          onChange={(e) => setNewProjName(e.target.value)}
+                          placeholder="Contoh: Pembangunan Masjid Raya Al-Muhajirin, atau Renovasi Kantor Cabang"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Tipe Pekerjaan Proyek *</label>
+                        <select
+                          value={newProjType}
+                          onChange={(e: any) => setNewProjType(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        >
+                          <option value="baru">Proyek Baru (Infrastruktur Total)</option>
+                          <option value="renovasi">Renovasi / Pemugaran Bangunan</option>
+                          <option value="alih_fungsi">Alih Fungsi / Relokasi Lahan</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Sumber Dana Utama *</label>
+                        <select
+                          value={newProjFunding}
+                          onChange={(e: any) => setNewProjFunding(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        >
+                          <option value="donasi">Donasi Jamaah / Swadaya Masyarakat</option>
+                          <option value="perusahaan">Pihak Ketiga / Perusahaan (Sponsorship)</option>
+                          <option value="pribadi">Kas Internal / Dana Pribadi Organisasi</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Fungsi / Peruntukan & Status Proyek *</label>
+                        <select
+                          value={newProjStatus}
+                          onChange={(e: any) => setNewProjStatus(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        >
+                          <option value="public">Publik (Akses Terbuka & Transparan Penuh)</option>
+                          <option value="private">Privat (Internal Terbatas)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Target Anggaran Proyek (IDR) *</label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          value={newProjBudget}
+                          onChange={(e) => setNewProjBudget(e.target.value)}
+                          placeholder="Masukkan nilai target anggaran, misal: 500000000"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-mono focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-700 text-xs font-bold mb-1">Deskripsi & Ruang Lingkup Pembangunan *</label>
+                      <textarea
+                        required
+                        rows={3}
+                        value={newProjDescription}
+                        onChange={(e) => setNewProjDescription(e.target.value)}
+                        placeholder="Deskripsikan latar belakang proyek, ukuran fisik rencana, target tanggal selesai, serta tujuan akhir pelaksanaan pembangunan secara detail..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2. Create Treasurer Account */}
+                  <div className="space-y-4 pt-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-2">2. Pendaftaran Pembuat Kas (Bendahara)</h4>
+                    <p className="text-xxs text-slate-400 leading-none">Mendaftarkan user pengelola kas yang diotorisasi khusus untuk menyetujui donasi dan mencatat pengeluaran pengadaan.</p>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Nama Lengkap Bendahara *</label>
+                        <input
+                          type="text"
+                          required
+                          value={newProjTreasurerName}
+                          onChange={(e) => setNewProjTreasurerName(e.target.value)}
+                          placeholder="Contoh: H. Akhmad Syakir"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Email Otoritas *</label>
+                        <input
+                          type="email"
+                          required
+                          value={newProjTreasurerEmail}
+                          onChange={(e) => setNewProjTreasurerEmail(e.target.value)}
+                          placeholder="contoh: bendahara@smartbuild.id"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Password Masuk Sesi *</label>
+                        <input
+                          type="password"
+                          required
+                          value={newProjTreasurerPassword}
+                          onChange={(e) => setNewProjTreasurerPassword(e.target.value)}
+                          placeholder="Keamanan minimal 4 karakter"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Create PM Account */}
+                  <div className="space-y-4 pt-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-2">3. Pendaftaran Manajer Proyek (PM)</h4>
+                    <p className="text-xxs text-slate-400 leading-none">Mendaftarkan user manajer konstruksi lapangan yang memiliki kuasa menerbitkan laporan kemajuan persentase fisik & log material mingguan.</p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Nama Lengkap PM *</label>
+                        <input
+                          type="text"
+                          required
+                          value={newProjPmName}
+                          onChange={(e) => setNewProjPmName(e.target.value)}
+                          placeholder="Contoh: Ir. Dwi Prayogo"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Email Otoritas *</label>
+                        <input
+                          type="email"
+                          required
+                          value={newProjPmEmail}
+                          onChange={(e) => setNewProjPmEmail(e.target.value)}
+                          placeholder="contoh: pm@smartbuild.id"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Password Masuk Sesi *</label>
+                        <input
+                          type="password"
+                          required
+                          value={newProjPmPassword}
+                          onChange={(e) => setNewProjPmPassword(e.target.value)}
+                          placeholder="Keamanan minimal 4 karakter"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Strategy Resets */}
+                  <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200/40 space-y-2.5">
+                    <div className="flex items-start space-x-2.5">
+                      <input
+                        type="checkbox"
+                        id="startFresh"
+                        checked={newProjStartFresh}
+                        onChange={(e) => setNewProjStartFresh(e.target.checked)}
+                        className="mt-1 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <label htmlFor="startFresh" className="text-xxs text-slate-700 leading-tight select-none cursor-pointer">
+                        <span className="block font-bold text-slate-800">Mulai Bersih (Rekomendasi)</span>
+                        Kosongkan histori donasi eksperimental, log progress fisik, dan tabel belanja kas rincian terdahulu agar sistem benar-benar steril untuk rencana proyek anyar ini. Rencana anggaran (RAB) akan terbentuk baru berdasarkan parameter persentase konstruk standar.
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Error / Success Feedback */}
+                  {formError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-xs font-medium">
+                      ⚠️ {formError}
+                    </div>
+                  )}
+
+                  {formSuccess && (
+                    <div className="bg-emerald-50 border border-emerald-250 text-emerald-800 px-4 py-3 rounded-lg text-xs font-medium">
+                      ✅ {formSuccess}
+                    </div>
+                  )}
+
+                  {/* Actions Submit */}
+                  <div className="flex justify-end pt-3">
+                    <button
+                      type="submit"
+                      disabled={projConfigLoading}
+                      className="w-full sm:w-auto bg-amber-600 hover:bg-amber-500 text-white px-8 py-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 shadow-sm disabled:opacity-50 cursor-pointer"
+                    >
+                      {projConfigLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Membuat Proyek Baru...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-4 w-4" />
+                          <span>Inisialisasi & Luncurkan Portal Proyek</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                </form>
+              </div>
+            )}
           </>
         )}
       </main>
@@ -1610,13 +2047,13 @@ $$ LANGUAGE plpgsql;`}
             <span className="font-bold text-sm tracking-widest uppercase">SmartBuild Transparency</span>
           </div>
           <p className="text-xxs font-mono text-slate-500">
-            Secure Fullstack Architecture Blueprint designed specifically for NeonDB & Postgres triggers. <br />
+            Secure Fullstack Architecture Blueprint <br />
             Created for verified public trust, accountability, and real-time physical development summaries.
           </p>
           <div className="text-xxs text-slate-600 flex flex-col sm:flex-row justify-center items-center gap-2">
             <span>© 2026 SmartBuild Initiative. Standard GPL-v2 License. Auditable code distribution.</span>
             <span className="bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-2 py-0.5 rounded font-mono text-xxs font-medium">
-              v1.2.8-latest (Deployed: 2026-06-02)
+              v1.2.8
             </span>
           </div>
         </div>
