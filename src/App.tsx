@@ -800,9 +800,6 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-slate-800"><span className="text-emerald-600 font-extrabold">SmartBuild</span></h1>
-            <p className="text-[10px] text-slate-550 font-semibold uppercase tracking-wider leading-none mt-0.5">
-              {summary?.projectConfig?.initialized && summary?.projectConfig?.name ? summary.projectConfig.name : "Belum Ada Proyek Aktif"}
-            </p>
           </div>
         </div>
 
@@ -876,7 +873,7 @@ export default function App() {
                 className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
               >
                 <LogOut className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Keluar</span>
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           ) : (
@@ -888,7 +885,7 @@ export default function App() {
               className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <UserCheck className="h-4 w-4" />
-              <span>Masuk Sesi</span>
+              <span>Login</span>
             </button>
           )}
         </div>
@@ -948,6 +945,26 @@ export default function App() {
             {activeTab === "dashboard" && (
               <div className="space-y-6">
 
+                {/* Dashboard Page Title Section */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                      {summary?.projectConfig?.initialized && summary?.projectConfig?.name 
+                        ? summary.projectConfig.name 
+                        : "Belum Ada Proyek Aktif"}
+                    </h1>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Dashboard Utama Transparansi Finansial Real-Time Proyek
+                    </p>
+                  </div>
+                  {summary?.projectConfig?.initialized && (
+                    <div className="flex items-center gap-2 font-mono text-[10px] bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full border border-emerald-100 self-start sm:self-center">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
+                      <span className="font-bold tracking-wider uppercase">PELACAKAN AKTIF</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Project Setup Information Board */}
                 {summary?.projectConfig && summary.projectConfig.initialized ? (
                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -956,8 +973,8 @@ export default function App() {
                         <span className="text-[9px] bg-emerald-50 text-emerald-700 font-extrabold px-2.5 py-0.5 rounded uppercase tracking-wider font-mono">
                           INFORMASI RESMI PROYEK : {summary.projectConfig.status ? summary.projectConfig.status.toUpperCase() : "PUBLIC"}
                         </span>
-                        <h2 className="text-base font-bold text-slate-800 mt-1">
-                          {summary.projectConfig.name}
+                        <h2 className="text-sm font-semibold text-slate-500 mt-1">
+                          Detail Rancangan & Spesifikasi Pembangunan
                         </h2>
                       </div>
                       <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
@@ -1325,7 +1342,7 @@ export default function App() {
                       className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 rounded-lg transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                     >
                       <UserCheck className="h-4 w-4" />
-                      <span>Masuk Sesi Otorisasi</span>
+                      <span>Login Otorisasi</span>
                     </button>
                   </div>
                 ) : (
@@ -1342,10 +1359,10 @@ export default function App() {
 
                       <button 
                         onClick={handleLogoutAction}
-                        className="bg-emerald-900 hover:bg-emerald-850 border border-emerald-800 text-white px-3 py-1.5 rounded-lg text-xxs font-bold transition flex items-center gap-1 cursor-pointer"
+                        className="bg-emerald-950 hover:bg-emerald-900 border border-emerald-850 text-white px-3 py-1.5 rounded-lg text-xxs font-bold transition flex items-center gap-1 cursor-pointer"
                       >
                         <LogOut className="h-3 w-3" />
-                        <span>Kunci Sesi / Keluar</span>
+                        <span>Kunci Sesi / Logout</span>
                       </button>
                     </div>
 
@@ -1644,7 +1661,7 @@ export default function App() {
                       className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-2.5 rounded-lg transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                     >
                       <UserCheck className="h-4 w-4" />
-                      <span>Masuk Sesi Otorisasi</span>
+                      <span>Login Otorisasi</span>
                     </button>
                   </div>
                 ) : (
@@ -1663,7 +1680,7 @@ export default function App() {
                         className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1.5 cursor-pointer self-start sm:self-center"
                       >
                         <LogOut className="h-3.5 w-3.5 text-rose-500" />
-                        <span>Kunci Sesi / Keluar</span>
+                        <span>Kunci Sesi / Logout</span>
                       </button>
                     </div>
 
@@ -2115,7 +2132,7 @@ export default function App() {
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-700 text-xs font-bold mb-1">Password Masuk Sesi *</label>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Password Login *</label>
                         <input
                           type="password"
                           required
@@ -2157,7 +2174,7 @@ export default function App() {
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-700 text-xs font-bold mb-1">Password Masuk Sesi *</label>
+                        <label className="block text-slate-700 text-xs font-bold mb-1">Password Login *</label>
                         <input
                           type="password"
                           required
@@ -2315,7 +2332,7 @@ export default function App() {
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
                   <UserCheck className="h-5 w-5 text-emerald-600" />
-                  <h4 className="font-bold text-slate-900 text-sm">Masuk Sesi Otorisasi</h4>
+                  <h4 className="font-bold text-slate-900 text-sm">Login Otorisasi</h4>
                 </div>
                 <button 
                   onClick={() => setIsLoginModalOpen(false)}
