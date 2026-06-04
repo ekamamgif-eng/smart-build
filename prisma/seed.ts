@@ -10,7 +10,7 @@ async function main() {
   const usersToSeed = [
     {
       email: "admin@masjid.id",
-      name: "Haji Sulaiman (Super Admin)",
+      name: "Rudi P",
       role: Role.ADMIN,
       passwordRaw: "admin"
     },

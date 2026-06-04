@@ -129,7 +129,7 @@ const defaultDonations: Donation[] = [
   },
   {
     id: "don-3",
-    donorName: "Haji Sulaiman & Keluarga",
+    donorName: "Rudi P & Keluarga",
     isAnonymous: false,
     amount: 50000000,
     date: "2026-05-15T18:00:00Z",
@@ -349,7 +349,7 @@ const defaultUsers = [
   {
     id: "user-admin",
     email: "admin@masjid.id",
-    name: "Haji Sulaiman (Super Admin)",
+    name: "Rudi P",
     role: "ADMIN",
     passwordRaw: "admin"
   },
@@ -535,7 +535,7 @@ async function ensurePostgresUsers() {
         {
           id: "user-admin",
           email: "admin@masjid.id",
-          name: "Haji Sulaiman (Super Admin)",
+          name: "Rudi P",
           role: "ADMIN" as any,
           password: bcrypt.hashSync("admin", 10)
         },

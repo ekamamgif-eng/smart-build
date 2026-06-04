@@ -238,13 +238,23 @@ export default function App() {
 
       if (activeToken) {
         try {
-          const projRes = await fetch("/api/projects", { headers: headersOpt });
+          const [projRes, profileRes] = await Promise.all([
+            fetch("/api/projects", { headers: headersOpt }),
+            fetch("/api/auth/me", { headers: headersOpt })
+          ]);
           if (projRes.ok) {
             const projData = await projRes.json();
             setProjects(projData);
           }
+          if (profileRes.ok) {
+            const profileData = await profileRes.json();
+            if (profileData && profileData.user) {
+              setCurrentUser(profileData.user);
+              localStorage.setItem("current_user", JSON.stringify(profileData.user));
+            }
+          }
         } catch (e) {
-          console.error("Error loading projects list", e);
+          console.error("Error loading projects list or profile query", e);
         }
       } else {
         setProjects([]);
