@@ -2368,55 +2368,7 @@ export default function App() {
                 </button>
               </form>
 
-              <div className="border-t border-slate-100 pt-4 space-y-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Pilihan Akses Evaluasi (Quick Login)</p>
-                <div className="grid grid-cols-1 gap-1.5 pt-1">
-                  <button 
-                    onClick={() => {
-                      setLoginEmail("admin@masjid.id");
-                      setLoginPassword("admin");
-                      handleLoginAction("admin@masjid.id", "admin");
-                    }}
-                    className="bg-slate-50 hover:bg-slate-100 p-2 rounded-lg border border-slate-150 text-left transition flex justify-between items-center text-xxs font-sans cursor-pointer"
-                  >
-                    <div>
-                      <span className="font-bold text-slate-800 block leading-tight">Super Admin (Lengkap)</span>
-                      <span className="text-slate-400 text-[10px]">admin@masjid.id</span>
-                    </div>
-                    <span className="bg-emerald-50 text-emerald-800 font-bold px-2 py-0.5 rounded text-[8px]">👑 ADMIN</span>
-                  </button>
 
-                  <button 
-                    onClick={() => {
-                      setLoginEmail("bendahara@masjid.id");
-                      setLoginPassword("treasurer123");
-                      handleLoginAction("bendahara@masjid.id", "treasurer123");
-                    }}
-                    className="bg-slate-50 hover:bg-slate-100 p-2 rounded-lg border border-slate-150 text-left transition flex justify-between items-center text-xxs font-sans cursor-pointer"
-                  >
-                    <div>
-                      <span className="font-bold text-slate-800 block leading-tight">Haji Rosyid (Bendahara)</span>
-                      <span className="text-slate-400 text-[10px]">bendahara@masjid.id</span>
-                    </div>
-                    <span className="bg-blue-50 text-blue-800 font-bold px-2 py-0.5 rounded text-[8px]">💰 TREASURER</span>
-                  </button>
-
-                  <button 
-                    onClick={() => {
-                      setLoginEmail("pm@masjid.id");
-                      setLoginPassword("pm123");
-                      handleLoginAction("pm@masjid.id", "pm123");
-                    }}
-                    className="bg-slate-50 hover:bg-slate-100 p-2 rounded-lg border border-slate-150 text-left transition flex justify-between items-center text-xxs font-sans cursor-pointer"
-                  >
-                    <div>
-                      <span className="font-bold text-slate-800 block leading-tight">Ir. Hermawan (Contract PM)</span>
-                      <span className="text-slate-400 text-[10px]">pm@masjid.id</span>
-                    </div>
-                    <span className="bg-amber-50 text-amber-800 font-bold px-2 py-0.5 rounded text-[8px]">🧱 PM</span>
-                  </button>
-                </div>
-              </div>
             </motion.div>
           </motion.div>
         )}
