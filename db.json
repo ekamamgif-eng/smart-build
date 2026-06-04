@@ -7,7 +7,7 @@
   "users": [
     {
       "id": "user-admin",
-      "email": "admin@masjid.id",
+      "email": "admin@pintarbangun.vercel.app",
       "name": "Rudi P",
       "role": "ADMIN",
       "password": "$2b$10$9rqW/WKd6qJc3mcDowD/beSk/Acx.BOttpOljZVoll1zSTol2j6tG",

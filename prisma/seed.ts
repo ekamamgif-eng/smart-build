@@ -9,7 +9,7 @@ async function main() {
 
   const usersToSeed = [
     {
-      email: "admin@masjid.id",
+      email: "admin@pintarbangun.vercel.app",
       name: "Rudi P",
       role: Role.ADMIN,
       passwordRaw: "admin"

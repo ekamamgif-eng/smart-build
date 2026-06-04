@@ -348,7 +348,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "buku-kas-masjid-super-secret-key-2
 const defaultUsers = [
   {
     id: "user-admin",
-    email: "admin@masjid.id",
+    email: "admin@pintarbangun.vercel.app",
     name: "Rudi P",
     role: "ADMIN",
     passwordRaw: "admin"
@@ -534,7 +534,7 @@ async function ensurePostgresUsers() {
       const usersToSeed = [
         {
           id: "user-admin",
-          email: "admin@masjid.id",
+          email: "admin@pintarbangun.vercel.app",
           name: "Rudi P",
           role: "ADMIN" as any,
           password: bcrypt.hashSync("admin", 10)

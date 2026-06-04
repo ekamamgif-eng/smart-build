@@ -2358,7 +2358,7 @@ export default function App() {
                   <input 
                     type="email" 
                     required
-                    placeholder="nama@masjid.id" 
+                    placeholder="nama@pintarbangun.vercel.app" 
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     className="w-full bg-slate-50 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:border-emerald-600 focus:bg-white focus:outline-hidden transition"
