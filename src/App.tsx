@@ -26,7 +26,8 @@ import {
   LogOut,
   UserCheck,
   Settings,
-  Download
+  Download,
+  Cloud
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -1463,6 +1464,17 @@ export default function App() {
               <span>Inisialisasi Proyek</span>
             </button>
           )}
+          <button
+            onClick={() => setActiveTab("google")}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+              activeTab === "google"
+                ? "bg-blue-100 text-blue-900 shadow-sm border border-blue-200"
+                : "text-blue-700 hover:text-blue-900 hover:bg-blue-50"
+            }`}
+          >
+            <Cloud className="h-3.5 w-3.5 text-blue-500" />
+            <span>Integrasi Google</span>
+          </button>
         </nav>
 
         {/* Right Side: Integrity status */}
@@ -1542,16 +1554,14 @@ export default function App() {
             Inisialisasi
           </button>
         )}
-        {currentUser !== null && (
-          <button
-            onClick={() => setActiveTab("google")}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === "google" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"
-            }`}
-          >
-            Integrasi Google
-          </button>
-        )}
+        <button
+          onClick={() => setActiveTab("google")}
+          className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+            activeTab === "google" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"
+          }`}
+        >
+          Integrasi Google
+        </button>
       </div>
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
@@ -2878,7 +2888,7 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === "google" && currentUser !== null && (
+            {activeTab === "google" && (
               <div className="space-y-6 max-w-5xl mx-auto animate-fade-in pb-12">
                 <GoogleDriveSheetsSync
                   googleToken={googleToken}

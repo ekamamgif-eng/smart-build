@@ -46,7 +46,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     // Attempt direct Google Drive upload if connected
     const googleToken = localStorage.getItem("google_access_token");
-    const driveFolderId = "1jyliqBEArRAqSIhjJ6v3gnL7-12bJKCW";
+    const driveFolderId = localStorage.getItem("smartbuild_drive_folder_id") || "1jyliqBEArRAqSIhjJ6v3gnL7-12bJKCW";
 
     if (googleToken) {
       try {
