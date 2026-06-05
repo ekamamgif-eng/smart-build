@@ -39,7 +39,7 @@ import {
 import { ImageUploader } from "./components/ImageUploader";
 import { jsPDF } from "jspdf";
 // @ts-ignore
-import projectLogo from "./assets/images/smart_build_logo_1780645521375.png";
+import projectLogo from "./assets/images/smart_build_flat_logo_1780652826297.png";
 
 export const formatCurrency = (value: number) => {
   return new Intl.NumberFormat("id-ID", {
@@ -888,7 +888,7 @@ export default function App() {
       doc.setFontSize(9.5);
       doc.setTextColor(30, 41, 59);
       doc.text("RIWAYAT MUTASI KAS PEMBANGUNAN BERJALAN", marginX, currentY);
-      currentY += 12;
+      currentY += 14;
 
       // Table styling details
       const tableHeaders = ["No.", "Tanggal & Jam", "Keterangan / Detil Aktivitas", "Jenis", "Jumlah"];
@@ -997,7 +997,7 @@ export default function App() {
           // Add page
           doc.addPage();
           currentPageNum++;
-          currentY = startYPage1; // reset currentY for new pages
+          currentY = 40; // reset currentY for page 2+ to start below header line nicely
           
           // Draw table headers again
           drawRow(currentY, tableHeaders, true);
