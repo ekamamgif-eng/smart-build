@@ -38,6 +38,7 @@ import {
 } from "./types";
 import { ImageUploader } from "./components/ImageUploader";
 import { jsPDF } from "jspdf";
+import GoogleDriveSheetsSync from "./components/GoogleWorkspaceIntegration";
 // @ts-ignore
 import projectLogo from "./assets/images/smart_build_flat_logo_1780652826297.png";
 
@@ -102,7 +103,8 @@ const getBase64Image = (imgUrl: string): Promise<string> => {
 
 export default function App() {
   // Navigation
-  const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "config">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "config" | "google">("dashboard");
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
 
   // Authentication states
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem("auth_token"));
@@ -1090,6 +1092,284 @@ export default function App() {
     return sorted;
   };
 
+  // 1. Log custom audits from Google Integrations
+  const logAuditFromClient = async (
+    action: "CREATE" | "UPDATE" | "DELETE" | "APPROVE", 
+    tableName: "Donation" | "Expenditure" | "PhysicalProgress" | "Budget", 
+    recordId: string, 
+    details: string
+  ) => {
+    try {
+      await fetch("/api/audit-logs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ action, tableName, recordId, details })
+      });
+      fetchAllData();
+    } catch (e) {
+      console.error("Gagal mencatat audit log integrasi Google", e);
+    }
+  };
+
+  // 2. Generate PDF Blob helper for Google Drive direct upload
+  const generateLedgerBlob = async (): Promise<Blob | null> => {
+    try {
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      const ledgerData = getCombinedLedger();
+      const projectName = summary?.projectConfig?.name || "Belum Ada Proyek Aktif";
+      const userDisplayName = currentUser ? `${currentUser.name} (${currentUser.role})` : "Public Guest";
+      const printDateStr = new Date().toLocaleString("id-ID", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+        hour: "2-digit", minute: "2-digit"
+      });
+
+      let logoBase64: string | null = null;
+      try {
+        logoBase64 = await getBase64Image(projectLogo);
+      } catch (e) {
+        console.warn("Could not load project logo in PDF, drawing text fallback instead.", e);
+      }
+
+      // Drawing function for header & footer on any page
+      const drawHeaderFooter = (pageDoc: typeof doc, pageNum: number, totalPages: number) => {
+        pageDoc.setFillColor(255, 255, 255);
+        pageDoc.rect(0, 0, 210, 40, "F");
+
+        // Thin top accent line in emerald color
+        pageDoc.setFillColor(5, 150, 105); // emerald-500
+        pageDoc.rect(0, 0, 210, 3, "F");
+
+        // Draw Logo or Fallback icon
+        if (logoBase64) {
+          pageDoc.addImage(logoBase64, "PNG", 15, 8, 14, 14);
+        } else {
+          pageDoc.setFillColor(5, 150, 105);
+          pageDoc.rect(15, 8, 14, 14, "F");
+          pageDoc.setFont("Helvetica", "bold");
+          pageDoc.setFontSize(8);
+          pageDoc.setTextColor(255, 255, 255);
+          pageDoc.text("SB", 22, 17, { align: "center" });
+        }
+
+        pageDoc.setFont("Helvetica", "bold");
+        pageDoc.setFontSize(11);
+        pageDoc.setTextColor(15, 23, 42); // slate-900
+        pageDoc.text("PORTAL TRANSPARANSI FINANSIAL SMARTBUILD", 33, 14);
+
+        pageDoc.setFont("Helvetica", "normal");
+        pageDoc.setFontSize(8);
+        pageDoc.setTextColor(100, 116, 139); // slate-500
+        pageDoc.text(`Laporan Buku Besar Resmi Mutasi Kas Pembangunan`, 33, 19);
+
+        pageDoc.setFont("Helvetica", "bold");
+        pageDoc.setFontSize(8.5);
+        pageDoc.setTextColor(5, 150, 105); // emerald-600
+        pageDoc.text(`Proyek: ${projectName}`, 33, 24);
+
+        pageDoc.setDrawColor(226, 232, 240); // slate-200
+        pageDoc.setLineWidth(0.4);
+        pageDoc.line(15, 29, 195, 29);
+
+        // Draw Footer
+        pageDoc.setFont("Helvetica", "normal");
+        pageDoc.setFontSize(7.5);
+        pageDoc.setTextColor(148, 163, 184); // slate-400
+        pageDoc.line(15, 282, 195, 282);
+        pageDoc.text("SmartBuild Transparency System - Laporan Autentik Terverifikasi Bank", 15, 287);
+        pageDoc.text(`Halaman ${pageNum} dari ${totalPages}`, 195, 287, { align: "right" });
+      };
+
+      const marginX = 15;
+      const startYPage1 = 34; // starts right after the header line
+      let currentY = startYPage1;
+
+      // Draw Metadata Panel (Only on Page 1)
+      doc.setFillColor(248, 250, 252); // slate-50
+      doc.rect(marginX, currentY, 180, 42, "F");
+      doc.setDrawColor(241, 245, 249); // slate-100
+      doc.rect(marginX, currentY, 180, 42, "S");
+
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text("IKHTISAR LAPORAN KEUANGAN VERIFIKASI", marginX + 6, currentY + 6);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105); // slate-600
+      doc.text(`Unduh Oleh: ${userDisplayName}`, marginX + 6, currentY + 14);
+      doc.text(`Dicetak Pada: ${printDateStr}`, marginX + 6, currentY + 20);
+      doc.text(`Status Konsistensi: 100% Sesuai Rekening Koran`, marginX + 6, currentY + 26);
+      doc.text(`Total Baris Mutasi: ${ledgerData.length} baris`, marginX + 6, currentY + 32);
+
+      // Right column of card (Totals box inside metadata card)
+      doc.setFillColor(255, 255, 255);
+      doc.rect(marginX + 105, currentY + 4, 70, 34, "F");
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(marginX + 105, currentY + 4, 70, 34, "S");
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`TOTAL PENERIMAAN (DONASI):`, marginX + 109, currentY + 9);
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(5, 150, 105); // emerald-500
+      doc.text(formatCurrency(totalRaisedApproved), marginX + 109, currentY + 13);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`TOTAL PENGELUARAN BELANJA:`, marginX + 109, currentY + 20);
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(220, 38, 38); // red-600
+      doc.text(formatCurrency(totalSpent), marginX + 109, currentY + 24);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`SALDO KAS SAAT INI:`, marginX + 109, currentY + 30);
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text(formatCurrency(balancedCash), marginX + 109, currentY + 34);
+
+      currentY += 48; // add space after metadata block
+
+      // Draw Ledger section header
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text("RIWAYAT MUTASI KAS PEMBANGUNAN BERJALAN", marginX, currentY);
+      currentY += 14;
+
+      const tableHeaders = ["No.", "Tanggal & Jam", "Keterangan / Detil Aktivitas", "Jenis", "Jumlah"];
+      const colWidths = [10, 35, 75, 30, 30]; // Matches 180 total
+      const colAligns = ["center", "left", "left", "center", "right"];
+
+      const drawRow = (rowY: number, values: string[], isHeader = false) => {
+        let xPos = marginX;
+        
+        if (isHeader) {
+          doc.setFillColor(15, 23, 42); // slate-900 (dense, readable)
+          doc.rect(marginX, rowY - 5, 180, 8, "F");
+          doc.setTextColor(255, 255, 255);
+          doc.setFont("Helvetica", "bold");
+          doc.setFontSize(8);
+        } else {
+          doc.setTextColor(51, 65, 85); // slate-700
+          doc.setFont("Helvetica", "normal");
+          doc.setFontSize(7.5);
+        }
+
+        for (let i = 0; i < values.length; i++) {
+          const val = values[i];
+          const colW = colWidths[i];
+          const align = colAligns[i];
+          
+          let textX = xPos;
+          if (align === "center") {
+            textX = xPos + colW / 2;
+          } else if (align === "right") {
+            textX = xPos + colW - 2;
+          } else {
+            textX = xPos + 2;
+          }
+
+          if (isHeader) {
+            doc.text(val, textX, rowY, { align: align as any });
+          } else {
+            if (i === 3) { // Type column
+              if (val === "Donasi") {
+                doc.setTextColor(5, 150, 105);
+              } else {
+                doc.setTextColor(220, 38, 38);
+              }
+            } else if (i === 4) { // Amount column
+              if (values[3] === "Donasi") {
+                doc.setTextColor(5, 150, 105);
+              } else {
+                doc.setTextColor(220, 38, 38);
+              }
+            } else {
+              doc.setTextColor(51, 65, 85);
+            }
+            
+            if (i === 2 && val.length > 50) {
+              const truncated = val.substring(0, 48) + "...";
+              doc.text(truncated, textX, rowY, { align: align as any });
+            } else {
+              doc.text(val, textX, rowY, { align: align as any });
+            }
+          }
+          xPos += colW;
+        }
+
+        if (!isHeader) {
+          doc.setDrawColor(241, 245, 249); // slate-100
+          doc.setLineWidth(0.2);
+          doc.line(marginX, rowY + 3, marginX + 180, rowY + 3);
+        }
+      };
+
+      drawRow(currentY, tableHeaders, true);
+      currentY += 8;
+
+      let currentPageNum = 1;
+      const rowHeight = 8;
+      const maxYSpace = 265; // Bottom bound of printable tables on A4
+
+      ledgerData.forEach((item, index) => {
+        const itemDate = new Date(item.date);
+        const dateFormatted = `${itemDate.toLocaleDateString("id-ID", { day: '2-digit', month: '2-digit', year: 'numeric' })} ${itemDate.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' })}`;
+        
+        const rowType = item.type === "donation" ? "Donasi" : "Belanja";
+        const prefix = item.type === "donation" ? "+" : "-";
+        const amtFormatted = `${prefix} ${formatCurrency(item.amount)}`;
+        const detailsStr = `${item.name} (${item.meta})`;
+
+        const rowValues = [
+          (index + 1).toString(),
+          dateFormatted,
+          detailsStr,
+          rowType,
+          amtFormatted
+        ];
+
+        if (currentY + rowHeight > maxYSpace) {
+          doc.addPage();
+          currentPageNum++;
+          currentY = 40;
+          drawRow(currentY, tableHeaders, true);
+          currentY += 8;
+        }
+
+        drawRow(currentY, rowValues, false);
+        currentY += rowHeight;
+      });
+
+      const totalPages = currentPageNum;
+      for (let pNum = 1; pNum <= totalPages; pNum++) {
+        doc.setPage(pNum);
+        drawHeaderFooter(doc, pNum, totalPages);
+      }
+
+      return doc.output("blob");
+    } catch (e) {
+      console.error("Gagal format pdf blob", e);
+      return null;
+    }
+  };
+
   // Recalculating totals
   const totalRaisedApproved = donations
     .filter(d => d.status === "APPROVED")
@@ -1239,6 +1519,16 @@ export default function App() {
             }`}
           >
             Inisialisasi
+          </button>
+        )}
+        {currentUser !== null && (
+          <button
+            onClick={() => setActiveTab("google")}
+            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              activeTab === "google" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"
+            }`}
+          >
+            Integrasi Google
           </button>
         )}
       </div>
@@ -2564,6 +2854,22 @@ export default function App() {
                   </div>
 
                 </form>
+              </div>
+            )}
+
+            {activeTab === "google" && currentUser !== null && (
+              <div className="space-y-6 max-w-5xl mx-auto animate-fade-in pb-12">
+                <GoogleDriveSheetsSync
+                  googleToken={googleToken}
+                  setGoogleToken={setGoogleToken}
+                  projectConfig={summary?.projectConfig}
+                  donations={donations}
+                  expenditures={expenditures}
+                  budgets={rabs}
+                  progress={progress}
+                  generateLedgerBlob={generateLedgerBlob}
+                  onLogAudit={logAuditFromClient}
+                />
               </div>
             )}
           </>

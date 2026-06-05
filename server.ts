@@ -1899,6 +1899,28 @@ app.get("/api/audit-logs", async (req, res) => {
   }
 });
 
+app.post("/api/audit-logs", authenticateToken, async (req, res) => {
+  const { action, tableName, recordId, details } = req.body;
+  const operator = (req as any).user;
+  const auditId = `log-${Date.now()}`;
+  const auditData = {
+    id: auditId,
+    timestamp: new Date().toISOString(),
+    action: action || "CREATE",
+    tableName: tableName || "Budget",
+    recordId: recordId || "system",
+    changedBy: operator.name || "System",
+    details: details || "Action executed."
+  };
+  try {
+    const savedLog = await addAuditLog(auditData);
+    res.status(201).json(savedLog);
+  } catch (err) {
+    console.error("POST audit log error:", err);
+    res.status(500).json({ error: "Failed to record audit log." });
+  }
+});
+
 // 5.5 Export full database to JSON/CSV (Admin only)
 app.get("/api/export-database", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
   try {
@@ -1976,6 +1998,71 @@ app.get("/api/system-info", (req, res) => {
       year: new Date().getFullYear()
     });
   }
+});
+
+// 7. Google OAuth Callback Route
+app.get(["/oauth-callback", "/oauth-callback/"], (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Autentikasi Google Berhasil</title>
+        <meta charset="utf-8" />
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            padding: 50px 20px;
+            background-color: #f8fafc;
+            color: #0f172a;
+          }
+          .card {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            max-width: 400px;
+            margin: 0 auto;
+            border: 1px solid #e2e8f0;
+          }
+          .icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #10b981;
+          }
+          h2 {
+            margin-bottom: 8px;
+            color: #10b981;
+          }
+          p {
+            font-size: 14px;
+            color: #64748b;
+            line-height: 1.5;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="icon">✓</div>
+          <h2>Autentikasi Berhasil!</h2>
+          <p>Koneksi ke akun Google Anda telah terverifikasi. Halaman ini akan menutup secara otomatis...</p>
+        </div>
+        <script>
+          const hash = window.location.hash;
+          if (hash) {
+            const params = new URLSearchParams(hash.substring(1));
+            const accessToken = params.get('access_token');
+            if (accessToken && window.opener) {
+              window.opener.postMessage({ type: 'GOOGLE_AUTH_SUCCESS', accessToken }, '*');
+            }
+          }
+          setTimeout(() => {
+            window.close();
+          }, 1500);
+        </script>
+      </body>
+    </html>
+  `);
 });
 
 // Setup development devServer or production asset pipelines
