@@ -42,6 +42,17 @@ import GoogleDriveSheetsSync from "./components/GoogleWorkspaceIntegration";
 // @ts-ignore
 import projectLogo from "./assets/images/smart_build_flat_logo_1780652826297.png";
 
+export const resolveReceiptUrl = (url: string | null): string => {
+  if (!url) return "";
+  if (url.includes("drive.google.com")) {
+    const match = url.match(/[?&]id=([^&]+)/) || url.match(/\/file\/d\/([^/]+)/);
+    if (match && match[1]) {
+      return `/api/drive-proxy?id=${match[1]}`;
+    }
+  }
+  return url;
+};
+
 export const formatCurrency = (value: number) => {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -104,7 +115,15 @@ const getBase64Image = (imgUrl: string): Promise<string> => {
 export default function App() {
   // Navigation
   const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "config" | "google">("dashboard");
-  const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const [googleToken, setGoogleTokenState] = useState<string | null>(() => localStorage.getItem("google_access_token"));
+  const setGoogleToken = (token: string | null) => {
+    setGoogleTokenState(token);
+    if (token) {
+      localStorage.setItem("google_access_token", token);
+    } else {
+      localStorage.removeItem("google_access_token");
+    }
+  };
 
   // Authentication states
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem("auth_token"));
@@ -135,6 +154,8 @@ export default function App() {
     physicalProgressPercent: number;
     expendituresByCategory: Record<string, number>;
     donationsByPayment: Record<string, number>;
+    budgets?: any[];
+    progress?: any[];
     projectConfig?: {
       name: string;
       type: 'baru' | 'renovasi' | 'alih_fungsi';
@@ -1858,7 +1879,7 @@ export default function App() {
                           <div className="h-32 bg-slate-200 rounded-lg overflow-hidden relative">
                             {progressLog[progressLog.length - 1].photoUrls?.[0] ? (
                               <img 
-                                src={progressLog[progressLog.length - 1].photoUrls![0]} 
+                                src={resolveReceiptUrl(progressLog[progressLog.length - 1].photoUrls![0])} 
                                 alt="Project construction snapshot preview" 
                                 referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover"
@@ -2865,8 +2886,8 @@ export default function App() {
                   projectConfig={summary?.projectConfig}
                   donations={donations}
                   expenditures={expenditures}
-                  budgets={rabs}
-                  progress={progress}
+                  budgets={summary?.budgets || []}
+                  progress={progressLog}
                   generateLedgerBlob={generateLedgerBlob}
                   onLogAudit={logAuditFromClient}
                 />
@@ -2928,7 +2949,7 @@ export default function App() {
                   As required under code security parameters, this image proves that financial values correspond directly to real-world banks deposits or verified vendor cash invoices.
                 </p>
                 <img 
-                  src={selectedReceiptUrl} 
+                  src={resolveReceiptUrl(selectedReceiptUrl)} 
                   alt="Verifiable Bank Proof / Invoice Cash Receipt" 
                   referrerPolicy="no-referrer"
                   className="w-full h-72 object-cover rounded-xl border border-slate-200"

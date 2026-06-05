@@ -19,6 +19,17 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
+  const resolveUploadUrl = (url: string) => {
+    if (!url) return "";
+    if (url.includes("drive.google.com")) {
+      const match = url.match(/[?&]id=([^&]+)/) || url.match(/\/file\/d\/([^/]+)/);
+      if (match && match[1]) {
+        return `/api/drive-proxy?id=${match[1]}`;
+      }
+    }
+    return url;
+  };
+
   const handleFileChange = async (file: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -32,6 +43,59 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     setUploading(true);
     setUploadError("");
+
+    // Attempt direct Google Drive upload if connected
+    const googleToken = localStorage.getItem("google_access_token");
+    const driveFolderId = "1jyliqBEArRAqSIhjJ6v3gnL7-12bJKCW";
+
+    if (googleToken) {
+      try {
+        const metadata = {
+          name: file.name,
+          mimeType: file.type,
+          parents: [driveFolderId]
+        };
+
+        const form = new FormData();
+        form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+        form.append("file", file);
+
+        const uploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${googleToken}`
+          },
+          body: form
+        });
+
+        if (uploadRes.ok) {
+          const fileData = await uploadRes.json();
+          const fileId = fileData.id;
+
+          // Set permissions to reader for anyone so the image renders correctly in browser for other users
+          await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${googleToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              role: "reader",
+              type: "anyone"
+            })
+          });
+
+          const webViewUrl = `https://drive.google.com/uc?id=${fileId}`;
+          onChange(webViewUrl);
+          setUploading(false);
+          return;
+        } else {
+          console.warn("Gagal mengunggah berkas ke Google Drive, beralih ke server lokal...");
+        }
+      } catch (err) {
+        console.warn("Kesalahan koneksi Google Drive upload, beralih ke server lokal:", err);
+      }
+    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -129,7 +193,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
               <div className="flex items-center space-x-2.5 overflow-hidden mr-2">
                 <img
-                  src={value}
+                  src={resolveUploadUrl(value)}
                   alt="Review upload"
                   className="h-10 w-10 object-cover rounded-lg border border-slate-200 shrink-0"
                   referrerPolicy="no-referrer"

@@ -65,15 +65,27 @@ if (process.env.VERCEL) {
   }
   DB_FILE_PATH = tempDbPath;
 }
-const UPLOADS_DIR = process.env.VERCEL ? "/tmp" : path.join(__dirname, "uploads");
+let UPLOADS_DIR = path.join(__dirname, "uploads");
 
-// Ensure upload directory exists
+// Ensure upload directory exists, with robust fallback to /tmp/uploads for read-only environments (e.g., Cloud Run, Vercel)
 try {
   if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
+  // Verify write permission actively
+  const testFile = path.join(UPLOADS_DIR, ".write-test");
+  fs.writeFileSync(testFile, "test");
+  fs.unlinkSync(testFile);
 } catch (error) {
-  console.warn("Could not create uploads directory because of read-only filesystem, but continuing:", error);
+  console.warn("Could not write to local uploads directory, falling back to /tmp/uploads:", error);
+  UPLOADS_DIR = "/tmp/uploads";
+  try {
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+  } catch (tmpError) {
+    console.error("Critical error: Could not create temporary uploads directory either:", tmpError);
+  }
 }
 
 // Configure disk storage
@@ -1628,6 +1640,8 @@ app.get("/api/financial-summary", async (req, res) => {
       totalExpenditures: expendituresSum,
       physicalProgressPercent: currentProgressPercent,
       projectConfig: await getProjectConfigFromDb(),
+      budgets,
+      progress,
       // Add categories analysis for charts
       expendituresByCategory: {
         Material: expenditures.filter((e: any) => e.category === "Material").reduce((s: number, e: any) => s + e.totalPrice, 0),
@@ -1997,6 +2011,48 @@ app.get("/api/system-info", (req, res) => {
       version: "1.2.8",
       year: new Date().getFullYear()
     });
+  }
+});
+
+// 6b. Google Drive Proxy Endpoint for delivering images without iframe/CORS cookie restrictions
+app.get("/api/drive-proxy", async (req, res) => {
+  const fileId = req.query.id as string;
+  if (!fileId) {
+    return res.status(400).json({ error: "Missing Google Drive file ID." });
+  }
+
+  const authHeader = req.headers.authorization;
+  
+  try {
+    let driveRes;
+    
+    // 1. Try using official Google Drive Files API first if access token/Authorization is provided
+    if (authHeader) {
+      driveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: {
+          Authorization: authHeader
+        }
+      });
+    }
+
+    // 2. Fallback to public thumbnail delivery endpoint which is bypass-safe and serves the full/high-res version with sz=w1600
+    if (!driveRes || !driveRes.ok) {
+      driveRes = await fetch(`https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`);
+    }
+
+    if (driveRes.ok && driveRes.body) {
+      const contentType = driveRes.headers.get("content-type") || "image/jpeg";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      
+      const buffer = await driveRes.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } else {
+      res.status(driveRes ? driveRes.status : 500).json({ error: "Gagal memuat berkas dari Google Drive." });
+    }
+  } catch (error) {
+    console.error("Error proxying Google Drive file:", error);
+    res.status(500).json({ error: "Kesalahan internal saat memuat berkas dari Google Drive." });
   }
 });
 

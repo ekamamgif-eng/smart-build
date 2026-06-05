@@ -43,7 +43,7 @@ export default function GoogleDriveSheetsSync({
 }: GoogleDriveSheetsSyncProps) {
   // CLIENT ID config state (can be saved in localStorage to persist dev configuration)
   const [clientId, setClientId] = useState<string>(() => {
-    return import.meta.env.VITE_GOOGLE_CLIENT_ID || localStorage.getItem("smartbuild_google_client_id") || "";
+    return (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || localStorage.getItem("smartbuild_google_client_id") || "";
   });
   const [showConfigHelp, setShowConfigHelp] = useState<boolean>(false);
 
@@ -51,8 +51,8 @@ export default function GoogleDriveSheetsSync({
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
   const [spreadsheetId, setSpreadsheetId] = useState<string>(() => localStorage.getItem("smartbuild_sheet_id") || "");
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(() => localStorage.getItem("smartbuild_sheet_url") || "");
-  const [driveFolderId, setDriveFolderId] = useState<string>(() => localStorage.getItem("smartbuild_drive_folder_id") || "");
-  const [driveFolderUrl, setDriveFolderUrl] = useState<string>(() => localStorage.getItem("smartbuild_drive_folder_url") || "");
+  const [driveFolderId, setDriveFolderId] = useState<string>(() => localStorage.getItem("smartbuild_drive_folder_id") || "1jyliqBEArRAqSIhjJ6v3gnL7-12bJKCW");
+  const [driveFolderUrl, setDriveFolderUrl] = useState<string>(() => localStorage.getItem("smartbuild_drive_folder_url") || "https://drive.google.com/drive/folders/1jyliqBEArRAqSIhjJ6v3gnL7-12bJKCW");
 
   // Operational states
   const [sheetsSyncLoading, setSheetsSyncLoading] = useState<boolean>(false);
