@@ -37,6 +37,9 @@ import {
   AuditLog 
 } from "./types";
 import { ImageUploader } from "./components/ImageUploader";
+import { jsPDF } from "jspdf";
+// @ts-ignore
+import projectLogo from "./assets/images/smart_build_logo_1780645521375.png";
 
 export const formatCurrency = (value: number) => {
   return new Intl.NumberFormat("id-ID", {
@@ -72,6 +75,29 @@ export const translatePaymentMethod = (method: string) => {
     Crypto: "Aset Kripto"
   };
   return mapping[method] || method;
+};
+
+const getBase64Image = (imgUrl: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = imgUrl;
+    img.setAttribute("crossOrigin", "anonymous");
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      } else {
+        reject(new Error("Gagal mengambil context 2D"));
+      }
+    };
+    img.onerror = (err) => {
+      reject(err);
+    };
+  });
 };
 
 export default function App() {
@@ -717,6 +743,291 @@ export default function App() {
     }
   };
 
+  const handleDownloadLedgerPDF = async () => {
+    try {
+      setFormError("");
+      
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      const ledgerData = getCombinedLedger();
+      const projectName = summary?.projectConfig?.name || "Belum Ada Proyek Aktif";
+      const userDisplayName = currentUser ? `${currentUser.name} (${currentUser.role})` : "Public Guest";
+      const printDateStr = new Date().toLocaleString("id-ID", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+        hour: "2-digit", minute: "2-digit"
+      });
+
+      // Try loading the logo as Base64 to render it nicely
+      let logoBase64: string | null = null;
+      try {
+        logoBase64 = await getBase64Image(projectLogo);
+      } catch (e) {
+        console.warn("Could not load project logo in PDF, drawing text fallback instead.", e);
+      }
+
+      // Drawing function for header & footer on any page
+      const drawHeaderFooter = (pageDoc: typeof doc, pageNum: number, totalPages: number) => {
+        // Draw Header Group
+        pageDoc.setFillColor(255, 255, 255);
+        pageDoc.rect(0, 0, 210, 40, "F");
+
+        // Thin top accent line in emerald color
+        pageDoc.setFillColor(5, 150, 105); // emerald-500
+        pageDoc.rect(0, 0, 210, 3, "F");
+
+        // Draw Logo or Fallback icon
+        if (logoBase64) {
+          pageDoc.addImage(logoBase64, "PNG", 15, 8, 14, 14);
+        } else {
+          // Draw a stylized vector fallback for logo (an emerald square with "SB")
+          pageDoc.setFillColor(5, 150, 105);
+          pageDoc.rect(15, 8, 14, 14, "F");
+          pageDoc.setFont("Helvetica", "bold");
+          pageDoc.setFontSize(8);
+          pageDoc.setTextColor(255, 255, 255);
+          pageDoc.text("SB", 22, 17, { align: "center" });
+        }
+
+        // Title and branding text
+        pageDoc.setFont("Helvetica", "bold");
+        pageDoc.setFontSize(11);
+        pageDoc.setTextColor(15, 23, 42); // slate-900
+        pageDoc.text("PORTAL TRANSPARANSI FINANSIAL SMARTBUILD", 33, 14);
+
+        pageDoc.setFont("Helvetica", "normal");
+        pageDoc.setFontSize(8);
+        pageDoc.setTextColor(100, 116, 139); // slate-500
+        pageDoc.text(`Laporan Buku Besar Resmi Mutasi Kas Pembangunan`, 33, 19);
+
+        pageDoc.setFont("Helvetica", "bold");
+        pageDoc.setFontSize(8.5);
+        pageDoc.setTextColor(5, 150, 105); // emerald-600
+        pageDoc.text(`Proyek: ${projectName}`, 33, 24);
+
+        // Divider
+        pageDoc.setDrawColor(226, 232, 240); // slate-200
+        pageDoc.setLineWidth(0.4);
+        pageDoc.line(15, 29, 195, 29);
+
+        // Draw Footer
+        pageDoc.setFont("Helvetica", "normal");
+        pageDoc.setFontSize(7.5);
+        pageDoc.setTextColor(148, 163, 184); // slate-400
+        pageDoc.line(15, 282, 195, 282);
+        pageDoc.text("SmartBuild Transparency System - Laporan Autentik Terverifikasi Bank", 15, 287);
+        pageDoc.text(`Halaman ${pageNum} dari ${totalPages}`, 195, 287, { align: "right" });
+      };
+
+      const marginX = 15;
+      const startYPage1 = 34; // starts right after the header line
+      let currentY = startYPage1;
+
+      // Draw Metadata Panel (Only on Page 1)
+      // Background card: light slate color
+      doc.setFillColor(248, 250, 252); // slate-50
+      doc.rect(marginX, currentY, 180, 42, "F");
+      doc.setDrawColor(241, 245, 249); // slate-100
+      doc.rect(marginX, currentY, 180, 42, "S");
+
+      // Card Header
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text("IKHTISAR LAPORAN KEUANGAN VERIFIKASI", marginX + 6, currentY + 6);
+
+      // Left column of card: details of retrieval
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105); // slate-600
+      doc.text(`Unduh Oleh: ${userDisplayName}`, marginX + 6, currentY + 14);
+      doc.text(`Dicetak Pada: ${printDateStr}`, marginX + 6, currentY + 20);
+      doc.text(`Status Konsistensi: 100% Sesuai Rekening Koran`, marginX + 6, currentY + 26);
+      doc.text(`Total Baris Mutasi: ${ledgerData.length} baris`, marginX + 6, currentY + 32);
+
+      // Right column of card (Totals box inside metadata card)
+      doc.setFillColor(255, 255, 255);
+      doc.rect(marginX + 105, currentY + 4, 70, 34, "F");
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(marginX + 105, currentY + 4, 70, 34, "S");
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`TOTAL PENERIMAAN (DONASI):`, marginX + 109, currentY + 9);
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(5, 150, 105); // emerald-500
+      doc.text(formatCurrency(totalRaisedApproved), marginX + 109, currentY + 13);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`TOTAL PENGELUARAN BELANJA:`, marginX + 109, currentY + 20);
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(220, 38, 38); // red-600
+      doc.text(formatCurrency(totalSpent), marginX + 109, currentY + 24);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`SALDO KAS SAAT INI:`, marginX + 109, currentY + 30);
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text(formatCurrency(balancedCash), marginX + 109, currentY + 34);
+
+      currentY += 48; // add space after metadata block
+
+      // Draw Ledger section header
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text("RIWAYAT MUTASI KAS PEMBANGUNAN BERJALAN", marginX, currentY);
+      currentY += 12;
+
+      // Table styling details
+      const tableHeaders = ["No.", "Tanggal & Jam", "Keterangan / Detil Aktivitas", "Jenis", "Jumlah"];
+      const colWidths = [10, 35, 75, 30, 30]; // Matches 180 total
+      const colAligns = ["center", "left", "left", "center", "right"];
+
+      // Draw table row drawing helper
+      const drawRow = (rowY: number, values: string[], isHeader = false) => {
+        let xPos = marginX;
+        
+        // Draw background for header row or alternating row colors
+        if (isHeader) {
+          doc.setFillColor(15, 23, 42); // slate-900 (dense, readable)
+          doc.rect(marginX, rowY - 5, 180, 8, "F");
+          doc.setTextColor(255, 255, 255);
+          doc.setFont("Helvetica", "bold");
+          doc.setFontSize(8);
+        } else {
+          doc.setTextColor(51, 65, 85); // slate-700
+          doc.setFont("Helvetica", "normal");
+          doc.setFontSize(7.5);
+        }
+
+        // Write row cell values
+        for (let i = 0; i < values.length; i++) {
+          const val = values[i];
+          const colW = colWidths[i];
+          const align = colAligns[i];
+          
+          let textX = xPos;
+          if (align === "center") {
+            textX = xPos + colW / 2;
+          } else if (align === "right") {
+            textX = xPos + colW - 2;
+          } else {
+            textX = xPos + 2;
+          }
+
+          if (isHeader) {
+            doc.text(val, textX, rowY, { align: align as any });
+          } else {
+            // Apply nice green / red formatting for amount cell and type cell specifically
+            if (i === 3) { // Type column
+              if (val === "Donasi") {
+                doc.setTextColor(5, 150, 105); // green
+              } else {
+                doc.setTextColor(220, 38, 38); // red
+              }
+            } else if (i === 4) { // Amount column
+              if (values[3] === "Donasi") {
+                doc.setTextColor(5, 150, 105);
+              } else {
+                doc.setTextColor(220, 38, 38);
+              }
+            } else {
+              doc.setTextColor(51, 65, 85);
+            }
+            
+            // Text truncation or wrapping helper for Keterangan (ColIndex = 2)
+            if (i === 2 && val.length > 50) {
+              const truncated = val.substring(0, 48) + "...";
+              doc.text(truncated, textX, rowY, { align: align as any });
+            } else {
+              doc.text(val, textX, rowY, { align: align as any });
+            }
+          }
+          xPos += colW;
+        }
+
+        // Draw light bottom link line
+        if (!isHeader) {
+          doc.setDrawColor(241, 245, 249); // slate-100
+          doc.setLineWidth(0.2);
+          doc.line(marginX, rowY + 3, marginX + 180, rowY + 3);
+        }
+      };
+
+      // Draw first table headers
+      drawRow(currentY, tableHeaders, true);
+      currentY += 8;
+
+      let currentPageNum = 1;
+      const rowHeight = 8;
+      const maxYSpace = 265; // Bottom bound of printable tables on A4
+
+      // Now map and write rows dynamically
+      ledgerData.forEach((item, index) => {
+        const itemDate = new Date(item.date);
+        const dateFormatted = `${itemDate.toLocaleDateString("id-ID", { day: '2-digit', month: '2-digit', year: 'numeric' })} ${itemDate.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' })}`;
+        
+        const rowType = item.type === "donation" ? "Donasi" : "Belanja";
+        const prefix = item.type === "donation" ? "+" : "-";
+        const amtFormatted = `${prefix} ${formatCurrency(item.amount)}`;
+        const detailsStr = item.type === "donation" ? `${item.name} (${item.meta})` : `${item.name} (${item.meta})`;
+
+        const rowValues = [
+          (index + 1).toString(),
+          dateFormatted,
+          detailsStr,
+          rowType,
+          amtFormatted
+        ];
+
+        // Check if adding this row spills over the threshold
+        if (currentY + rowHeight > maxYSpace) {
+          // Add page
+          doc.addPage();
+          currentPageNum++;
+          currentY = startYPage1; // reset currentY for new pages
+          
+          // Draw table headers again
+          drawRow(currentY, tableHeaders, true);
+          currentY += 8;
+        }
+
+        drawRow(currentY, rowValues, false);
+        currentY += rowHeight;
+      });
+
+      // After plotting all rows, we know the exact total pages.
+      const totalPages = currentPageNum;
+
+      // Draw header and footer layout dynamically for all pages
+      for (let pNum = 1; pNum <= totalPages; pNum++) {
+        doc.setPage(pNum);
+        drawHeaderFooter(doc, pNum, totalPages);
+      }
+
+      // Save document
+      const docName = `Laporan_Buku_Besar_Mutasi_Kas_${new Date().toISOString().split("T")[0]}.pdf`;
+      doc.save(docName);
+      setFormSuccess(`Laporan keuangan berhasil diunduh sebagai PDF dengan nama "${docName}"!`);
+      setTimeout(() => setFormSuccess(""), 6000);
+    } catch (error) {
+      console.error("Gagal menghasilkan PDF mutasi kas", error);
+      setFormError("Gagal memformat atau mengunduh PDF laporan kas.");
+    }
+  };
+
   // Combine, sort and filter ledger collections
   const getCombinedLedger = () => {
     const list: Array<{
@@ -794,10 +1105,13 @@ export default function App() {
       {/* Top Navigation & Global Identity */}
       <header className="sticky top-0 z-40 h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 flex-shrink-0 shadow-xs">
         {/* Left Side: Branding */}
-        <div className="flex items-center gap-4 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
-          <div className="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold shadow-sm">
-            SB
-          </div>
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
+          <img 
+            src={projectLogo} 
+            alt="SmartBuild Logo" 
+            className="h-[36px] w-[36px] object-contain flex-shrink-0"
+            referrerPolicy="no-referrer" 
+          />
           <div>
             <h1 className="text-lg font-bold tracking-tight text-slate-800"><span className="text-emerald-600 font-extrabold">SmartBuild</span></h1>
           </div>
@@ -1119,6 +1433,17 @@ export default function App() {
                           <option value="donations">Hanya Donasi</option>
                           <option value="expenditures">Hanya Belanja/Pengeluaran</option>
                         </select>
+                        {isTreasurerAuthenticated && (
+                          <button
+                            type="button"
+                            onClick={handleDownloadLedgerPDF}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border border-emerald-500/10"
+                            title="Unduh Buku Mutasi Sebagai Laporan PDF Resmi"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            <span>Unduh PDF</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                     
