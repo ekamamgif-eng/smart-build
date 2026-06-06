@@ -58,3 +58,13 @@ export interface AuditLog {
   changedBy: string;
   details: string; // readable summary of change
 }
+
+export interface Milestone {
+  id: string;
+  title: string;
+  expectedDate: string;
+  category: 'Foundation' | 'Structure' | 'Roofing' | 'Finishing' | 'MEP' | 'Operational' | 'Other';
+  status: 'PENDING' | 'ON_GOING' | 'COMPLETED';
+  progressNotes?: string;
+}
+

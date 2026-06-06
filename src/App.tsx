@@ -17,6 +17,7 @@ import {
   UserSquare2, 
   Clock, 
   Plus, 
+  Trash2,
   Check, 
   Eye, 
   ArrowRight,
@@ -35,7 +36,8 @@ import {
   Donation, 
   Expenditure, 
   PhysicalProgress, 
-  AuditLog 
+  AuditLog,
+  Milestone
 } from "./types";
 import { ImageUploader } from "./components/ImageUploader";
 import { jsPDF } from "jspdf";
@@ -174,6 +176,7 @@ export default function App() {
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [progressLog, setProgressLog] = useState<PhysicalProgress[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [systemInfo, setSystemInfo] = useState<{ version: string; year: number }>({
@@ -216,6 +219,13 @@ export default function App() {
   const [newProgressDesc, setNewProgressDesc] = useState("");
   const [newProgressPhoto, setNewProgressPhoto] = useState("");
 
+  // Milestone form states
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
+  const [newMilestoneDate, setNewMilestoneDate] = useState("");
+  const [newMilestoneCategory, setNewMilestoneCategory] = useState<'Foundation' | 'Structure' | 'Roofing' | 'Finishing' | 'MEP' | 'Operational' | 'Other'>("Foundation");
+  const [newMilestoneStatus, setNewMilestoneStatus] = useState<'PENDING' | 'ON_GOING' | 'COMPLETED'>("PENDING");
+  const [newMilestoneNotes, setNewMilestoneNotes] = useState("");
+
   // UI status messages
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
@@ -256,13 +266,14 @@ export default function App() {
       setLoading(true);
       const activeToken = tokenOverride !== undefined ? tokenOverride : authToken;
       const headersOpt = activeToken ? { "Authorization": `Bearer ${activeToken}` } : {};
-      const [sumRes, donRes, expRes, progRes, auditRes, sysRes] = await Promise.all([
+      const [sumRes, donRes, expRes, progRes, auditRes, sysRes, mileRes] = await Promise.all([
         fetch("/api/financial-summary", { headers: headersOpt }),
         fetch("/api/donations", { headers: headersOpt }),
         fetch("/api/expenditures", { headers: headersOpt }),
         fetch("/api/progress", { headers: headersOpt }),
         fetch("/api/audit-logs", { headers: headersOpt }),
-        fetch("/api/system-info")
+        fetch("/api/system-info"),
+        fetch("/api/milestones", { headers: headersOpt })
       ]);
 
       const sumData = await sumRes.json();
@@ -270,6 +281,7 @@ export default function App() {
       const expData = await expRes.json();
       const progData = await progRes.json();
       const auditData = await auditRes.json();
+      const mileData = mileRes.ok ? await mileRes.json() : [];
       let sysData = { version: "1.2.8", year: new Date().getFullYear() };
       try {
         if (sysRes.ok) {
@@ -284,6 +296,7 @@ export default function App() {
       setExpenditures(expData);
       setProgressLog(progData);
       setAuditLogs(auditData);
+      setMilestones(mileData);
       setSystemInfo(sysData);
 
       if (activeToken) {
@@ -494,6 +507,109 @@ export default function App() {
       }
     } catch (e) {
       setFormError("Koneksi gagal saat memperbarui log konstruksi fisik.");
+    }
+  };
+
+  const handleCreateMilestone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    setFormSuccess("");
+
+    if (!newMilestoneTitle.trim() || !newMilestoneDate || !newMilestoneCategory || !newMilestoneStatus) {
+      setFormError("Judul milestone, estimasi tanggal, kategori, dan status wajib diisi.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/milestones", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({
+          title: newMilestoneTitle,
+          expectedDate: newMilestoneDate,
+          category: newMilestoneCategory,
+          status: newMilestoneStatus,
+          progressNotes: newMilestoneNotes
+        })
+      });
+
+      if (response.ok) {
+        setFormSuccess(`Milestone "${newMilestoneTitle}" berhasil diterbitkan.`);
+        setNewMilestoneTitle("");
+        setNewMilestoneDate("");
+        setNewMilestoneCategory("Foundation");
+        setNewMilestoneStatus("PENDING");
+        setNewMilestoneNotes("");
+        fetchAllData();
+        setTimeout(() => setFormSuccess(""), 4000);
+      } else {
+        const err = await response.json();
+        setFormError(err.error || "Gagal membuat milestone baru.");
+      }
+    } catch (err) {
+      setFormError("Gagal terhubung ke server untuk membuat milestone.");
+    }
+  };
+
+  const handleUpdateMilestoneStatus = async (id: string, newStatus: any, notes?: string, title?: string, expectedDate?: string, category?: string) => {
+    setFormError("");
+    setFormSuccess("");
+
+    try {
+      const response = await fetch(`/api/milestones/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({
+          status: newStatus,
+          progressNotes: notes,
+          title,
+          expectedDate,
+          category
+        })
+      });
+
+      if (response.ok) {
+        setFormSuccess("Milestone berhasil diperbarui.");
+        fetchAllData();
+        setTimeout(() => setFormSuccess(""), 4000);
+      } else {
+        const err = await response.json();
+        setFormError(err.error || "Gagal memperbarui status milestone.");
+      }
+    } catch (err) {
+      setFormError("Gagal terhubung ke server.");
+    }
+  };
+
+  const handleDeleteMilestone = async (id: string) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus milestone ini?")) return;
+    setFormError("");
+    setFormSuccess("");
+
+    try {
+      const response = await fetch(`/api/milestones/${id}`, {
+        method: "DELETE",
+        headers: {
+          ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {})
+        }
+      });
+
+      if (response.ok) {
+        setFormSuccess("Milestone berhasil dihapus.");
+        fetchAllData();
+        setTimeout(() => setFormSuccess(""), 4000);
+      } else {
+        const err = await response.json();
+        setFormError(err.error || "Gagal menghapus milestone.");
+      }
+    } catch (err) {
+      setFormError("Gagal terhubung ke server.");
     }
   };
 
@@ -1909,6 +2025,90 @@ export default function App() {
                       )}
                     </div>
 
+                    {/* Linimasa Milestones Proyek Card */}
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-slate-800 text-xs font-sans tracking-tight flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-amber-600 shrink-0" />
+                          <span>Linimasa Milestones Proyek</span>
+                        </h3>
+                        <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-mono uppercase font-bold">
+                          {milestones.filter(m => m.status === 'COMPLETED').length}/{milestones.length} Selesai
+                        </span>
+                      </div>
+
+                      <p className="text-[10px] text-slate-400 mb-5 leading-normal">
+                        Daftar sasaran strategis konstruksi fisik proyek beserta estimasi tanggal pencapaiannya.
+                      </p>
+
+                      <div className="relative border-l border-slate-150 ml-3 space-y-5">
+                        {milestones.length > 0 ? (
+                          [...milestones]
+                            .sort((a, b) => new Date(a.expectedDate).getTime() - new Date(b.expectedDate).getTime())
+                            .map((ms) => {
+                              const isCompleted = ms.status === 'COMPLETED';
+                              const isOngoing = ms.status === 'ON_GOING';
+                              
+                              let dotClass = "bg-slate-200 border-slate-350 text-slate-400";
+                              if (isCompleted) {
+                                dotClass = "bg-emerald-500 border-emerald-600 text-white shadow-emerald-100 shadow-sm";
+                              } else if (isOngoing) {
+                                dotClass = "bg-amber-500 border-amber-600 text-white shadow-amber-100 shadow-sm";
+                              }
+
+                              return (
+                                <div key={ms.id} className="relative pl-5">
+                                  {/* Milestone dot connector */}
+                                  <span className={`absolute -left-2.5 top-0.5 w-5 h-5 rounded-full flex items-center justify-center border font-mono text-[8px] font-bold ${dotClass}`}>
+                                    {isCompleted ? "✓" : isOngoing ? "➔" : "•"}
+                                  </span>
+
+                                  <div className="space-y-1">
+                                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1">
+                                      <h4 className={`text-xxs font-bold leading-snug break-all ${isCompleted ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+                                        {ms.title}
+                                      </h4>
+                                      <span className="text-[8px] font-bold font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded shrink-0 self-start">
+                                        {new Date(ms.expectedDate).toLocaleDateString("id-ID", {
+                                          day: "numeric",
+                                          month: "short"
+                                        })}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <span className="text-[8px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.2 rounded uppercase">
+                                        {translateCategory(ms.category)}
+                                      </span>
+                                      
+                                      {isCompleted && (
+                                        <span className="text-[8px] text-emerald-750 bg-emerald-50 border border-emerald-100 px-1 py-0.2 rounded font-bold uppercase">Selesai</span>
+                                      )}
+                                      {isOngoing && (
+                                        <span className="text-[8px] text-amber-750 bg-amber-50 border border-amber-100 px-1 py-0.2 rounded font-bold uppercase">Sedang Berjalan</span>
+                                      )}
+                                      {ms.status === 'PENDING' && (
+                                        <span className="text-[8px] text-slate-500 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded font-bold uppercase">Pending</span>
+                                      )}
+                                    </div>
+
+                                    {ms.progressNotes && (
+                                      <p className="text-[9px] text-slate-500 leading-relaxed bg-slate-50 p-1.5 rounded border border-dashed border-slate-200 mt-1 italic">
+                                        {ms.progressNotes}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
+                        ) : (
+                          <div className="text-center text-slate-400 text-xs py-4 italic">
+                            Belum ada rincian sasaran strategis proyek yang terdaftar.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Cryptographic Live Audit Log (Internal Integrity Check matching mockup design text perfectly) */}
                     <div className="bg-slate-900 p-6 rounded-xl shadow-xl text-white flex-1 flex flex-col justify-between">
                       <div>
@@ -2386,6 +2586,165 @@ export default function App() {
                           <span>Terbitkan Laporan Proyek Hari Ini</span>
                         </button>
                       </form>
+                    </div>
+
+                    {/* MANAJEMEN MILESTONES SECTION */}
+                    <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-xs space-y-6">
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-xs mb-1">Manajemen Milestones & Sasaran Proyek</h3>
+                        <p className="text-[10px] text-slate-400 leading-normal">Atur tenggat sasaran strategis konstruksi fisik proyek dan perbarui status pengerjaan secara real-time.</p>
+                      </div>
+
+                      {/* Form Tambah Milestone */}
+                      <form onSubmit={handleCreateMilestone} className="border-t border-slate-100 pt-4 space-y-3 text-[10px]">
+                        <h4 className="font-bold text-slate-700 uppercase tracking-wider mb-2">Tambah Sasaran Baru</h4>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-slate-505 mb-1 font-semibold">Nama Sasaran / Milestone *</label>
+                            <input 
+                              type="text"
+                              placeholder="Contoh: Pemasangan Kusen & Daun Jendela"
+                              value={newMilestoneTitle}
+                              onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                              className="w-full bg-white px-3 py-2 border border-slate-200 rounded-lg text-xxs text-slate-800"
+                              required
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-505 mb-1 font-semibold">Estimasi Tanggal Target *</label>
+                            <input 
+                              type="date"
+                              value={newMilestoneDate}
+                              onChange={(e) => setNewMilestoneDate(e.target.value)}
+                              className="w-full bg-white px-3 py-2 border border-slate-200 rounded-lg text-xxs font-mono text-slate-800"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-slate-505 mb-1 font-semibold">Kategori Pekerjaan *</label>
+                            <select
+                              value={newMilestoneCategory}
+                              onChange={(e: any) => setNewMilestoneCategory(e.target.value)}
+                              className="w-full bg-white px-3 py-2 border border-slate-200 rounded-lg text-xxs text-slate-850"
+                            >
+                              <option value="Foundation">Fondasi & Pematangan Lahan</option>
+                              <option value="Structure">Pilar Struktur & Beton</option>
+                              <option value="Roofing">Pekerjaan Atap & Kubah</option>
+                              <option value="Finishing">Pekerjaan Finishing & Tegel</option>
+                              <option value="MEP">Sistem MEP & Pemipaan</option>
+                              <option value="Operational">Legalitas & Operasional</option>
+                              <option value="Other">Lain-lain / Serbaguna</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-505 mb-1 font-semibold">Status Awal *</label>
+                            <select
+                              value={newMilestoneStatus}
+                              onChange={(e: any) => setNewMilestoneStatus(e.target.value)}
+                              className="w-full bg-white px-3 py-2 border border-slate-200 rounded-lg text-xxs text-slate-850"
+                            >
+                              <option value="PENDING">Rencana / Pending</option>
+                              <option value="ON_GOING">Sedang Berlangsung</option>
+                              <option value="COMPLETED">Selesai (Completed)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-505 mb-1 font-semibold">Catatan Rencana / Detail Kemajuan (Opsional)</label>
+                          <input 
+                            type="text"
+                            placeholder="Contoh: Kusen masjid dari kayu jati perhutani grade A."
+                            value={newMilestoneNotes}
+                            onChange={(e) => setNewMilestoneNotes(e.target.value)}
+                            className="w-full bg-white px-3 py-2 border border-slate-200 rounded-lg text-xxs text-slate-800"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xxs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer mt-3"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>Tambahkan Sasaran Linimasa</span>
+                        </button>
+                      </form>
+
+                      {/* Daftar Milestones */}
+                      <div className="border-t border-slate-100 pt-4 space-y-3">
+                        <h4 className="font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-2">Daftar Linimasa Aktif</h4>
+                        
+                        <div className="space-y-3">
+                          {milestones.length > 0 ? (
+                            [...milestones]
+                              .sort((a, b) => new Date(a.expectedDate).getTime() - new Date(b.expectedDate).getTime())
+                              .map((ms) => (
+                                <div key={ms.id} className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-2 text-xxs">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-bold text-slate-800 text-xs">{ms.title}</span>
+                                      <span className="text-[8px] bg-slate-200/80 text-slate-600 px-1.5 py-0.5 rounded font-mono uppercase font-bold">{translateCategory(ms.category)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="text-[9px] font-mono text-slate-500 font-bold bg-slate-150/50 border border-slate-200 px-1.5 py-0.2 rounded">{ms.expectedDate}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteMilestone(ms.id)}
+                                        className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded transition shrink-0"
+                                        title="Hapus Milestone"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                    <div>
+                                      <label className="block text-[8px] text-slate-400 font-bold uppercase mb-1">Status Pekerjaan</label>
+                                      <select
+                                        value={ms.status}
+                                        onChange={(e: any) => handleUpdateMilestoneStatus(ms.id, e.target.value, ms.progressNotes, ms.title, ms.expectedDate, ms.category)}
+                                        className="w-full bg-white px-2 py-1 border border-slate-200 rounded-md text-[10px] text-slate-800 font-semibold"
+                                      >
+                                        <option value="PENDING">Rencana / Pending</option>
+                                        <option value="ON_GOING">Sedang Berlangsung (On Going)</option>
+                                        <option value="COMPLETED">Selesai (Completed)</option>
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[8px] text-slate-400 font-bold uppercase mb-1">Catatan Progres</label>
+                                      <div className="flex items-center gap-1.5">
+                                        <input 
+                                          type="text"
+                                          defaultValue={ms.progressNotes || ""}
+                                          placeholder="Tulis catatan di sini..."
+                                          onBlur={(e) => {
+                                            if (e.target.value !== ms.progressNotes) {
+                                              handleUpdateMilestoneStatus(ms.id, ms.status, e.target.value, ms.title, ms.expectedDate, ms.category);
+                                            }
+                                          }}
+                                          className="w-full bg-white px-2 py-1 border border-slate-200 rounded-md text-[10px] text-slate-700"
+                                        />
+                                        <span className="text-[7px] text-slate-400 italic font-mono uppercase shrink-0" title="Simpan otomatis saat Anda mengklik di luar kotak">AutoSave</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                          ) : (
+                            <div className="text-center text-slate-400 text-xxs py-4 italic bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                              Belum ada rincian milestones yang terdaftar dalam proyek ini.
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}

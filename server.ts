@@ -462,6 +462,61 @@ function getDBState() {
     saveDBState(state);
   }
 
+  // Ensure milestones array exists to track project milestones
+  if (!state.milestones) {
+    state.milestones = [
+      {
+        id: "ms-1",
+        title: "Pembersihan Lahan & Pengukuran Konstruksi",
+        expectedDate: "2026-05-15",
+        category: "Foundation",
+        status: "COMPLETED",
+        progressNotes: "Lahan telah dibersihkan sepenuhnya dan batas fondasi telah dipasang."
+      },
+      {
+        id: "ms-2",
+        title: "Pengecoran Fondasi Cakar Ayam & Sloof Beton",
+        expectedDate: "2026-06-25",
+        category: "Foundation",
+        status: "ON_GOING",
+        progressNotes: "Pekerjaan anyaman besi cakar ayam sedang berlangsung."
+      },
+      {
+        id: "ms-3",
+        title: "Konstruksi Tiang Kolom Struktur Lantai Satu",
+        expectedDate: "2026-08-15",
+        category: "Structure",
+        status: "PENDING",
+        progressNotes: "Persiapan cetakan bekisting tiang kolom."
+      },
+      {
+        id: "ms-4",
+        title: "Pemasangan Rangka Baja & Kubah Utama",
+        expectedDate: "2026-10-10",
+        category: "Roofing",
+        status: "PENDING",
+        progressNotes: "Pabrikasi kubah di bengkel eksternal."
+      },
+      {
+        id: "ms-5",
+        title: "Instalasi Kelistrikan & Plambing Interior (MEP)",
+        expectedDate: "2026-11-20",
+        category: "MEP",
+        status: "PENDING",
+        progressNotes: "Menunggu selesainya dinding bata."
+      },
+      {
+        id: "ms-6",
+        title: "Finishing Marmer Dinding Mihrab & Lantai Utama",
+        expectedDate: "2026-12-25",
+        category: "Finishing",
+        status: "PENDING",
+        progressNotes: "Pemilihan marmer impor telah disetujui panitia."
+      }
+    ];
+    saveDBState(state);
+  }
+
   return state;
 }
 
@@ -1448,6 +1503,48 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
       db.auditLogs = [];
       db.budgets = rabs;
       db.projects = []; // Clear old projects for a fresh start!
+      db.milestones = [
+        {
+          id: "ms-1",
+          title: "Pekerjaan Persiapan & Fondasi",
+          expectedDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          category: "Foundation",
+          status: "PENDING",
+          progressNotes: "Pekerjaan pematangan lahan dan pengecoran fondasi rencana."
+        },
+        {
+          id: "ms-2",
+          title: "Struktur Balok & Tiang Beton",
+          expectedDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          category: "Structure",
+          status: "PENDING",
+          progressNotes: "Pengecoran pilar dan balok utama penopang bangunan."
+        },
+        {
+          id: "ms-3",
+          title: "Pekerjaan Konstruksi Rangka Atap Utama",
+          expectedDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          category: "Roofing",
+          status: "PENDING",
+          progressNotes: "Pemasangan penutup atap atau kubah utama."
+        },
+        {
+          id: "ms-4",
+          title: "Instalasi Mekanikal, Elektrikal & Plambing (MEP)",
+          expectedDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          category: "MEP",
+          status: "PENDING",
+          progressNotes: "Pemasangan pipa air bersih, sanitasi, dan kabel listrik bangunan."
+        },
+        {
+          id: "ms-5",
+          title: "Finishing Marmer, Keramik & Ornamen Arsitektur",
+          expectedDate: new Date(Date.now() + 150 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          category: "Finishing",
+          status: "PENDING",
+          progressNotes: "Finishing cat, pemasangan lantai utama masjid, serta ornamen mihrab."
+        }
+      ];
     } else {
       // Just adjust the budgets to the new percentages to fit the config
       db.budgets = rabs;
@@ -2110,6 +2207,156 @@ app.get("/api/drive-proxy", async (req, res) => {
   } catch (error) {
     console.error("Error proxying Google Drive file:", error);
     res.status(500).json({ error: "Kesalahan internal saat memuat berkas dari Google Drive." });
+  }
+});
+
+// 6. Project Milestone Timeline Endpoints
+app.get("/api/milestones", async (req, res) => {
+  try {
+    const db = getDBState();
+    if (!db.milestones) {
+      db.milestones = [];
+      saveDBState(db);
+    }
+    res.json(db.milestones);
+  } catch (err) {
+    console.error("GET milestones error:", err);
+    res.status(500).json({ error: "Gagal memuat daftar milestones." });
+  }
+});
+
+app.post("/api/milestones", authenticateToken, requireRole(["ADMIN", "PROJECT_MANAGER"]), async (req, res) => {
+  const { title, expectedDate, category, status, progressNotes } = req.body;
+  const operator = (req as any).user;
+
+  if (!title || !expectedDate || !category || !status) {
+    return res.status(400).json({ error: "Judul milestone, estimasi tanggal selesai, kategori, dan status wajib diisi." });
+  }
+
+  try {
+    const db = getDBState();
+    if (!db.milestones) {
+      db.milestones = [];
+    }
+
+    const milestoneId = `ms-${Date.now()}`;
+    const newMilestone = {
+      id: milestoneId,
+      title,
+      expectedDate,
+      category,
+      status,
+      progressNotes: progressNotes || ""
+    };
+
+    db.milestones.push(newMilestone);
+    saveDBState(db);
+
+    // Audit Logging
+    const auditId = `log-${Date.now()}`;
+    db.auditLogs.unshift({
+      id: auditId,
+      timestamp: new Date().toISOString(),
+      action: "CREATE",
+      tableName: "Budget" as const, // matching existing types
+      recordId: milestoneId,
+      changedBy: operator.name,
+      details: `Milestone baru dibuat: "${title}" (${category}), estimasi tanggal selesai: ${expectedDate}.`
+    });
+    saveDBState(db);
+
+    res.status(201).json(newMilestone);
+  } catch (err) {
+    console.error("POST milestones error:", err);
+    res.status(500).json({ error: "Gagal membuat milestone baru." });
+  }
+});
+
+app.put("/api/milestones/:id", authenticateToken, requireRole(["ADMIN", "PROJECT_MANAGER"]), async (req, res) => {
+  const { id } = req.params;
+  const { title, expectedDate, category, status, progressNotes } = req.body;
+  const operator = (req as any).user;
+
+  try {
+    const db = getDBState();
+    if (!db.milestones) {
+      db.milestones = [];
+    }
+
+    const index = db.milestones.findIndex((m: any) => m.id === id);
+    if (index === -1) {
+      return res.status(404).json({ error: "Milestone tidak ditemukan." });
+    }
+
+    const old = db.milestones[index];
+    const updatedMilestone = {
+      ...old,
+      title: title !== undefined ? title : old.title,
+      expectedDate: expectedDate !== undefined ? expectedDate : old.expectedDate,
+      category: category !== undefined ? category : old.category,
+      status: status !== undefined ? status : old.status,
+      progressNotes: progressNotes !== undefined ? progressNotes : old.progressNotes
+    };
+
+    db.milestones[index] = updatedMilestone;
+    saveDBState(db);
+
+    // Audit Logging
+    const auditId = `log-${Date.now()}`;
+    db.auditLogs.unshift({
+      id: auditId,
+      timestamp: new Date().toISOString(),
+      action: "UPDATE",
+      tableName: "Budget" as const,
+      recordId: id,
+      changedBy: operator.name,
+      details: `Milestone "${updatedMilestone.title}" diperbarui oleh ${operator.name}. Status: ${updatedMilestone.status}.`
+    });
+    saveDBState(db);
+
+    res.json(updatedMilestone);
+  } catch (err) {
+    console.error("PUT milestones error:", err);
+    res.status(500).json({ error: "Gagal memperbarui milestone." });
+  }
+});
+
+app.delete("/api/milestones/:id", authenticateToken, requireRole(["ADMIN", "PROJECT_MANAGER"]), async (req, res) => {
+  const { id } = req.params;
+  const operator = (req as any).user;
+
+  try {
+    const db = getDBState();
+    if (!db.milestones) {
+      db.milestones = [];
+    }
+
+    const index = db.milestones.findIndex((m: any) => m.id === id);
+    if (index === -1) {
+      return res.status(404).json({ error: "Milestone tidak ditemukan." });
+    }
+
+    const milestoneTitle = db.milestones[index].title;
+    db.milestones.splice(index, 1);
+    saveDBState(db);
+
+    // Audit Logging
+    const auditId = `log-${Date.now()}`;
+    db.auditLogs.unshift({
+      id: auditId,
+      timestamp: new Date().toISOString(),
+      action: "DELETE",
+      tableName: "Budget" as const,
+      recordId: id,
+      changedBy: operator.name,
+      details: `Milestone "${milestoneTitle}" dihapus oleh ${operator.name}.`
+    });
+    saveDBState(db);
+
+    res.json({ message: "Milestone berhasil dihapus." });
+  } catch (err) {
+    console.error("DELETE milestones error:", err);
+    res.status(500).json({ error: "Gagal menghapus milestone." });
   }
 });
 
