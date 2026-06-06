@@ -28,7 +28,9 @@ import {
   UserCheck,
   Settings,
   Download,
-  Cloud
+  Cloud,
+  QrCode,
+  Smartphone
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -226,6 +228,18 @@ export default function App() {
   const [newMilestoneStatus, setNewMilestoneStatus] = useState<'PENDING' | 'ON_GOING' | 'COMPLETED'>("PENDING");
   const [newMilestoneNotes, setNewMilestoneNotes] = useState("");
 
+  // Public donation gateway states
+  const [isPublicGatewayOpen, setIsPublicGatewayOpen] = useState(false);
+  const [publicDonorName, setPublicDonorName] = useState("");
+  const [publicDonorIsAnon, setPublicDonorIsAnon] = useState(false);
+  const [publicDonationAmount, setPublicDonationAmount] = useState("50000");
+  const [publicDonationMethod, setPublicDonationMethod] = useState<"Bank Transfer" | "E-Wallet" | "Cash" | "Crypto">("Bank Transfer");
+  const [publicDonationProof, setPublicDonationProof] = useState("");
+  const [qrAmountPreset, setQrAmountPreset] = useState("50000");
+  const [publicGatewayError, setPublicGatewayError] = useState("");
+  const [publicGatewaySuccess, setPublicGatewaySuccess] = useState("");
+  const [publicGatewaySubmitting, setPublicGatewaySubmitting] = useState(false);
+
   // UI status messages
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
@@ -332,6 +346,90 @@ export default function App() {
   useEffect(() => {
     fetchAllData();
   }, []);
+
+  // Listen for mobile QR scanner URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("pay") === "donation") {
+      const amount = params.get("amount") || "50000";
+      setPublicDonationAmount(amount);
+      setQrAmountPreset(amount);
+      setPublicDonorIsAnon(false);
+      setPublicDonorName("");
+      setPublicDonationMethod("Bank Transfer");
+      setPublicDonationProof("");
+      setPublicGatewayError("");
+      setPublicGatewaySuccess("");
+      setIsPublicGatewayOpen(true);
+      
+      // Quietly clean up search params from the address bar
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  const handlePublicDonationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPublicGatewayError("");
+    setPublicGatewaySuccess("");
+    setPublicGatewaySubmitting(true);
+
+    const nameToSubmit = publicDonorIsAnon ? "Hamba Allah" : publicDonorName.trim();
+    if (!publicDonorIsAnon && !nameToSubmit) {
+      setPublicGatewayError("Nama donatur wajib diisi, atau silakan pilih sebagai Hamba Allah (Anonim).");
+      setPublicGatewaySubmitting(false);
+      return;
+    }
+
+    const amt = Number(publicDonationAmount);
+    if (!publicDonationAmount || isNaN(amt) || amt <= 0) {
+      setPublicGatewayError("Nominal donasi harus merupakan nilai positif.");
+      setPublicGatewaySubmitting(false);
+      return;
+    }
+
+    if (!publicDonationProof.trim()) {
+      setPublicGatewayError("Aturan Transparansi Ketat: Harap unggah bukti transfer bank atau kuitansi untuk memvalidasi donasi.");
+      setPublicGatewaySubmitting(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/donations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          donorName: nameToSubmit,
+          isAnonymous: publicDonorIsAnon,
+          amount: amt,
+          paymentMethod: publicDonationMethod,
+          transferProofUrl: publicDonationProof,
+          approveDirectly: false
+        })
+      });
+
+      if (response.ok) {
+        setPublicGatewaySuccess(`Alhamdulillah! Donasi sebesar Rp ${amt.toLocaleString("id-ID")} berhasil diajukan dalam antrean bendahara.`);
+        setPublicDonorName("");
+        setPublicDonorIsAnon(false);
+        setPublicDonationProof("");
+        fetchAllData();
+        
+        setTimeout(() => {
+          setIsPublicGatewayOpen(false);
+          setPublicGatewaySuccess("");
+        }, 5000);
+      } else {
+        const err = await response.json();
+        setPublicGatewayError(err.error || "Gagal mendaftarkan laporan donasi.");
+      }
+    } catch (err) {
+      setPublicGatewayError("Gangguan koneksi database.");
+    } finally {
+      setPublicGatewaySubmitting(false);
+    }
+  };
 
   // Actions trigger functions
   const handleApproveDonation = async (id: string) => {
@@ -2025,6 +2123,104 @@ export default function App() {
                       )}
                     </div>
 
+                    {/* QR Code Donasi Publik Card */}
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col space-y-4">
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-xs font-sans tracking-tight flex items-center gap-2">
+                          <QrCode className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span>Barcode Donasi Publik</span>
+                        </h3>
+                        <p className="text-[10px] text-slate-400 mt-1 leading-normal font-sans">
+                          Pindai barcode QR dengan kamera HP Anda untuk langsung membuka gerbang pembayaran mandiri secara instan dan aman.
+                        </p>
+                      </div>
+
+                      {/* QR Display */}
+                      <div className="flex flex-col items-center justify-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 relative shadow-inner">
+                        <div className="p-3.5 bg-white rounded-lg shadow-sm border border-slate-150">
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                              window.location.origin + "/?pay=donation&amount=" + qrAmountPreset
+                            )}`}
+                            className="w-36 h-36 object-contain mix-blend-multiply" 
+                            alt="QR Code Donasi Publik" 
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <span className="text-[9px] font-mono font-bold text-slate-500 mt-3 flex items-center gap-1 bg-white px-2.5 py-0.5 rounded-full shadow-xs border border-slate-100">
+                          <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
+                          Rp {Number(qrAmountPreset).toLocaleString("id-ID")}
+                        </span>
+                      </div>
+
+                      {/* Presets Grid */}
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Pilih Nominal Donasi</span>
+                        <div className="grid grid-cols-3 gap-1.5 font-mono">
+                          {[
+                            { label: "20 Rb", value: "20000" },
+                            { label: "50 Rb", value: "50000" },
+                            { label: "100 Rb", value: "100000" },
+                            { label: "250 Rb", value: "250000" },
+                            { label: "500 Rb", value: "500000" },
+                          ].map((preset) => (
+                            <button
+                              key={preset.value}
+                              type="button"
+                              onClick={() => setQrAmountPreset(preset.value)}
+                              className={`text-[9px] font-bold py-1.5 px-1 rounded-lg border transition-all cursor-pointer ${
+                                qrAmountPreset === preset.value
+                                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                  : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = window.prompt("Masukkan nominal kustom (Rupiah):", qrAmountPreset);
+                              if (val) {
+                                const num = parseInt(val.replace(/\D/g, ""), 10);
+                                if (!isNaN(num) && num > 0) {
+                                  setQrAmountPreset(num.toString());
+                                } else {
+                                  alert("Harap masukkan nominal angka yang valid.");
+                                }
+                              }
+                            }}
+                            className={`text-[9px] font-bold py-1.5 px-1 rounded-lg border transition-all cursor-pointer font-sans ${
+                              !["20000", "50000", "100000", "250000", "500000"].includes(qrAmountPreset)
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                            }`}
+                          >
+                            {!["20000", "50000", "100000", "250000", "500000"].includes(qrAmountPreset) ? "Kustom ✓" : "Kustom..."}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Open Gateway Direct Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPublicDonationAmount(qrAmountPreset);
+                          setPublicDonorIsAnon(false);
+                          setPublicDonorName("");
+                          setPublicDonationMethod("Bank Transfer");
+                          setPublicDonationProof("");
+                          setPublicGatewayError("");
+                          setPublicGatewaySuccess("");
+                          setIsPublicGatewayOpen(true);
+                        }}
+                        className="w-full bg-slate-900 hover:bg-slate-800 text-white text-xxs font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs font-sans"
+                      >
+                        <Smartphone className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>Kirim Donasi di Perangkat Ini</span>
+                      </button>
+                    </div>
+
                     {/* Linimasa Milestones Proyek Card */}
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
                       <div className="flex items-center justify-between mb-4">
@@ -3406,6 +3602,259 @@ export default function App() {
                 </button>
               </form>
 
+
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PUBLIC DONATION PAYMENT GATEWAY MODAL */}
+      <AnimatePresence>
+        {isPublicGatewayOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto"
+            onClick={() => {
+              if (!publicGatewaySubmitting) setIsPublicGatewayOpen(false);
+            }}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl relative overflow-hidden space-y-4 my-8"
+            >
+              {/* Header */}
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Coins className="h-5 w-5 text-emerald-600" />
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">Gerbang Kontribusi Donasi Mandiri</h4>
+                    <p className="text-[10px] text-slate-400">Pernyataan komitmen pelacakan dana pembangunan transparan 100%</p>
+                  </div>
+                </div>
+                {!publicGatewaySubmitting && (
+                  <button 
+                    onClick={() => setIsPublicGatewayOpen(false)}
+                    className="bg-slate-100 text-slate-500 hover:text-slate-900 p-1 rounded-full text-xs font-bold w-6 h-6 flex items-center justify-center transition cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Success / Error Banners */}
+              {publicGatewaySuccess && (
+                <div className="bg-emerald-50 text-emerald-800 text-xs p-4 rounded-xl border border-emerald-150 flex items-start space-x-2 animate-fade-in">
+                  <span className="text-sm">✓</span>
+                  <div className="space-y-1">
+                    <p className="font-bold">Konfirmasi Diterima!</p>
+                    <p className="text-[11px] leading-relaxed">{publicGatewaySuccess}</p>
+                  </div>
+                </div>
+              )}
+
+              {publicGatewayError && (
+                <div className="bg-rose-50 text-rose-700 text-xs p-4 rounded-xl border border-rose-150 flex items-start space-x-2 animate-fade-in">
+                  <span className="text-sm">⚠️</span>
+                  <div className="space-y-1">
+                    <p className="font-bold">Verifikasi Gagal</p>
+                    <p className="text-[11px] leading-relaxed">{publicGatewayError}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Main Content & Payment Instructions */}
+              {!publicGatewaySuccess && (
+                <form onSubmit={handlePublicDonationSubmit} className="space-y-4 text-xs font-sans">
+                  
+                  {/* Payment Portals Info Section */}
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 space-y-3">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Panduan Transfer Tujuan Resmi</span>
+                    
+                    {publicDonationMethod === "Bank Transfer" ? (
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-150 shadow-xs">
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
+                              <span className="bg-blue-600 text-white font-extrabold px-1 rounded text-[8px] tracking-wider uppercase font-sans">BCA</span> 
+                              PANITIA PEMBANGUNAN UTAMA
+                            </span>
+                            <p className="text-xxs font-mono font-semibold text-slate-500">No. Rekening: 869-041-2026</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText("8690412026");
+                              alert("Nomor rekening BCA berhasil disalin!");
+                            }}
+                            className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-2.5 py-1 rounded text-[10px] font-bold transition font-sans cursor-pointer"
+                          >
+                            Salin
+                          </button>
+                        </div>
+
+                        <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-150 shadow-xs">
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
+                              <span className="bg-emerald-600 text-white font-extrabold px-1 rounded text-[8px] tracking-wider uppercase font-sans mt-0.5">MANDIRI</span> 
+                              REKENING KAS IMAM MASJID
+                            </span>
+                            <p className="text-xxs font-mono font-semibold text-slate-500">No. Rekening: 131-00-2026-0606</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText("1310020260606");
+                              alert("Nomor rekening Mandiri berhasil disalin!");
+                            }}
+                            className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-2.5 py-1 rounded text-[10px] font-bold transition font-sans cursor-pointer"
+                          >
+                            Salin
+                          </button>
+                        </div>
+                      </div>
+                    ) : publicDonationMethod === "E-Wallet" ? (
+                      <div className="flex flex-col items-center justify-center bg-white p-3.5 rounded-lg border border-slate-150 shadow-xs space-y-2">
+                        <img 
+                          src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=qris-panitia-pembangunan-masjid-terpercaya" 
+                          alt="Mock QRIS Resmi"
+                          className="w-28 h-28 object-contain mix-blend-multiply" 
+                          referrerPolicy="no-referrer"
+                        />
+                        <span className="text-[9px] font-sans font-bold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-100">QRIS STANDAR NASIONAL</span>
+                        <p className="text-slate-400 text-[9.5px] text-center max-w-xs">Silakan pangkas dan simpan QRIS di atas untuk dipindai menggunakan aplikasi dana transfer e-wallet (GoPay, OVO, ShopeePay, LinkAja, BCA Mobile)</p>
+                      </div>
+                    ) : publicDonationMethod === "Crypto" ? (
+                      <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-150 shadow-xs">
+                        <div className="space-y-0.5 max-w-[80%]">
+                          <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
+                            <span className="bg-amber-500 text-white font-extrabold px-1 rounded text-[8px] tracking-wider uppercase font-sans">USDT</span> 
+                            TRC20 Wallet Address
+                          </span>
+                          <p className="text-[9px] font-mono break-all text-slate-500">TX9z4k1fLzW6v22E54RaUh9435b674b3Pq</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText("TX9z4k1fLzW6v22E54RaUh9435b674b3Pq");
+                            alert("Alamat wallet crypto berhasil disalin!");
+                          }}
+                          className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-2.5 py-1 rounded text-[10px] font-bold transition font-sans cursor-pointer"
+                        >
+                          Salin
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="bg-white p-3 rounded-lg border border-slate-150 shadow-xs text-slate-500 text-xxs">
+                        Serahkan donasi langsung dalam tunai ke Kantor Yayasan Sekretariat / Kotak Amal Utama Masjid Pembangunan Utama. Tetap unggah foto slip penyerimaan resmi di kolom berikut.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Form Fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    
+                    {/* Donor Name */}
+                    <div className="flex flex-col space-y-1">
+                      <label className="text-slate-600 font-bold font-sans">Nama Donatur / Pengirim *</label>
+                      <input 
+                        type="text"
+                        placeholder="Masukkan nama lengkap Anda..."
+                        value={publicDonorName}
+                        onChange={(e) => setPublicDonorName(e.target.value)}
+                        disabled={publicDonorIsAnon}
+                        required={!publicDonorIsAnon}
+                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-xs focus:ring-1 focus:ring-emerald-600 focus:bg-white focus:outline-none disabled:opacity-40 transition font-sans"
+                      />
+                      <div className="flex items-center space-x-1.5 pt-1">
+                        <input 
+                          type="checkbox"
+                          id="publicAnon"
+                          checked={publicDonorIsAnon}
+                          onChange={(e) => setPublicDonorIsAnon(e.target.checked)}
+                          className="rounded text-emerald-600 border-slate-300 w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <label htmlFor="publicAnon" className="text-xxs text-slate-500 select-none cursor-pointer">Sembunyikan nama (Hamba Allah)</label>
+                      </div>
+                    </div>
+
+                    {/* Amount Input */}
+                    <div className="flex flex-col space-y-1">
+                      <label className="text-slate-600 font-bold font-sans">Nominal Donasi (Rupiah) *</label>
+                      <input 
+                        type="number"
+                        placeholder="Contoh: 150000"
+                        value={publicDonationAmount}
+                        onChange={(e) => setPublicDonationAmount(e.target.value)}
+                        required
+                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-xs focus:ring-1 focus:ring-emerald-600 focus:bg-white focus:outline-none transition font-mono text-slate-800 font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    
+                    {/* Method Dropdown */}
+                    <div className="flex flex-col space-y-1">
+                      <label className="text-slate-600 font-bold font-sans">Pilihan Saluran Transfer *</label>
+                      <select
+                        value={publicDonationMethod}
+                        onChange={(e: any) => setPublicDonationMethod(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-xs focus:ring-1 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
+                      >
+                        <option value="Bank Transfer">Transfer Bank Mandiri/BCA</option>
+                        <option value="E-Wallet">QRIS Dompet Digital (GoPay/OVO)</option>
+                        <option value="Cash">Tunai Handover Lapangan</option>
+                        <option value="Crypto">USDT Stablecoin (Crypto)</option>
+                      </select>
+                    </div>
+
+                    {/* Image Verification Proof */}
+                    <div className="flex flex-col">
+                      <ImageUploader 
+                        label="Unggah Tangkapan Layar Resi Transfer *"
+                        value={publicDonationProof}
+                        onChange={setPublicDonationProof}
+                        required={true}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Submit buttons */}
+                  <div className="flex items-center space-x-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      disabled={publicGatewaySubmitting}
+                      onClick={() => setIsPublicGatewayOpen(false)}
+                      className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-lg transition text-xxs font-sans cursor-pointer disabled:opacity-55"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={publicGatewaySubmitting}
+                      className="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg transition-all text-xxs shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-55 font-sans"
+                    >
+                      {publicGatewaySubmitting ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>Mengirim Laporan...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-3.5 w-3.5" />
+                          <span>Kirim Laporan Konfirmasi</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                </form>
+              )}
 
             </motion.div>
           </motion.div>
