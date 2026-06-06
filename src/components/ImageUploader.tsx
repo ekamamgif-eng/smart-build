@@ -44,11 +44,37 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     setUploading(true);
     setUploadError("");
 
-    // Attempt direct Google Drive upload if connected
+    const formData = new FormData();
+    formData.append("file", file);
+
+    let uploadedUrl = "";
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        uploadedUrl = data.url;
+        onChange(data.url);
+      } else {
+        const err = await response.json();
+        setUploadError(err.error || "Gagal mengunggah file.");
+        setUploading(false);
+        return;
+      }
+    } catch (e) {
+      setUploadError("Masalah koneksi jaringan dengan server.");
+      setUploading(false);
+      return;
+    }
+
+    // Attempt direct Google Drive duplicate upload if connected to keep Google Drive folder populated
     const googleToken = localStorage.getItem("google_access_token");
     const driveFolderId = localStorage.getItem("smartbuild_drive_folder_id") || "1jyliqBEArRAqSIhjJ6v3gnL7-12bJKCW";
 
-    if (googleToken) {
+    if (googleToken && uploadedUrl) {
       try {
         const metadata = {
           name: file.name,
@@ -72,7 +98,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           const fileData = await uploadRes.json();
           const fileId = fileData.id;
 
-          // Set permissions to reader for anyone so the image renders correctly in browser for other users
+          // Set permissions to reader for anyone so the image renders correctly in Google Drive widgets if needed
           await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
             method: "POST",
             headers: {
@@ -84,40 +110,15 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
               type: "anyone"
             })
           });
-
-          const webViewUrl = `https://drive.google.com/uc?id=${fileId}`;
-          onChange(webViewUrl);
-          setUploading(false);
-          return;
         } else {
-          console.warn("Gagal mengunggah berkas ke Google Drive, beralih ke server lokal...");
+          console.warn("Gagal menduplikasikan berkas ke Google Drive.");
         }
       } catch (err) {
-        console.warn("Kesalahan koneksi Google Drive upload, beralih ke server lokal:", err);
+        console.warn("Kesalahan koneksi Google Drive upload sync:", err);
       }
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        onChange(data.url);
-      } else {
-        const err = await response.json();
-        setUploadError(err.error || "Gagal mengunggah file.");
-      }
-    } catch (e) {
-      setUploadError("Masalah koneksi jaringan dengan server.");
-    } finally {
-      setUploading(false);
-    }
+    setUploading(false);
   };
 
   const handleDragOver = (e: React.DragEvent) => {

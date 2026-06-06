@@ -1,4 +1,6 @@
 // Vercel Production Deployment Patch - June 2026
+import dotenv from "dotenv";
+dotenv.config();
 import express from "express";
 import fs from "fs";
 import path from "path";
@@ -6,6 +8,7 @@ import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
 // PrismaClient is dynamically imported on demand to prevent top-level module load crashes in serverless environments
 import { 
   Donation, 
@@ -1595,10 +1598,64 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
 });
 
 // Upload File Endpoint (menerima file upload dan mengembalikan url)
-app.post("/api/upload", upload.single("file"), (req, res) => {
+app.post("/api/upload", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "Gagal mengunggah file. Pastikan Anda memilih file yang valid." });
   }
+
+  const cloudinaryUrl = process.env.CLOUDINARY_URL;
+
+  // Cloudinary Integration
+  if (cloudinaryUrl) {
+    try {
+      // Format: cloudinary://api_key:api_secret@cloud_name
+      const match = cloudinaryUrl.match(/cloudinary:\/\/([^:]+):([^@]+)@(.+)/);
+      if (match) {
+        const apiKey = match[1];
+        const apiSecret = match[2];
+        const cloudName = match[3];
+        
+        cloudinary.config({
+          cloud_name: cloudName,
+          api_key: apiKey,
+          api_secret: apiSecret,
+          secure: true
+        });
+        console.log("Cloudinary manually configured with cloud_name:", cloudName);
+      } else {
+        // Fallback to automatic loading
+        cloudinary.config();
+        console.log("Cloudinary automatic configuration loaded.");
+      }
+      
+      console.log("Mengunggah berkas ke Cloudinary:", req.file.path);
+      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+        folder: "smartbuild_uploads",
+        resource_type: "auto"
+      });
+      
+      console.log("Berhasil mengunggah ke Cloudinary! URL:", uploadResult.secure_url);
+
+      // Clean up the local temporary file after successful Cloudinary upload
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (unlinkErr) {
+        console.warn("Gagal menghapus file lokal sementara:", unlinkErr);
+      }
+
+      return res.json({ 
+        url: uploadResult.secure_url,
+        provider: "cloudinary",
+        public_id: uploadResult.public_id
+      });
+    } catch (cloudinaryErr: any) {
+      console.error("Kesalahan fatal saat mengunggah berkas ke Cloudinary:", cloudinaryErr);
+      // We will allow local fallback so the user's flow doesn't crash completely, but print error details.
+    }
+  } else {
+    console.warn("CLOUDINARY_URL tidak didefinisikan dalam environment.");
+  }
+
   const fileUrl = `/uploads/${req.file.filename}`;
   res.json({ url: fileUrl });
 });
