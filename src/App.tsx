@@ -332,6 +332,17 @@ export default function App() {
             fetch("/api/projects", { headers: headersOpt }),
             fetch("/api/auth/me", { headers: headersOpt })
           ]);
+          
+          if (projRes.status === 401 || projRes.status === 403 || profileRes.status === 401 || profileRes.status === 403) {
+            console.warn("Session expired or token is invalid on server, clearing stale credentials.");
+            localStorage.removeItem("auth_token");
+            localStorage.removeItem("current_user");
+            setAuthToken(null);
+            setCurrentUser(null);
+            setProjects([]);
+            return;
+          }
+
           if (projRes.ok) {
             const projData = await projRes.json();
             setProjects(projData);
