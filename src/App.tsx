@@ -87,10 +87,10 @@ export const translateCategory = (cat: string) => {
 
 export const translatePaymentMethod = (method: string) => {
   const mapping: Record<string, string> = {
-    "Bank Transfer": "Transfer Bank",
-    "E-Wallet": "Dompet Digital (E-Wallet)",
-    Cash: "Tunai / Cash",
-    Crypto: "Aset Kripto"
+    "Bank Transfer": "Bank Transfer",
+    "E-Wallet": "QRIS/Dompet Digital",
+    Cash: "Tunai",
+    Crypto: "Kripto"
   };
   return mapping[method] || method;
 };
@@ -340,6 +340,7 @@ export default function App() {
             setAuthToken(null);
             setCurrentUser(null);
             setProjects([]);
+            setActiveTab("dashboard");
             return;
           }
 
@@ -773,6 +774,7 @@ export default function App() {
     setAuthToken(null);
     setCurrentUser(null);
     setProjects([]);
+    setActiveTab("dashboard");
     setFormSuccess("Sesi Anda telah ditutup dengan aman.");
     setTimeout(() => setFormSuccess(""), 4000);
     fetchAllData(null);
@@ -2586,10 +2588,9 @@ export default function App() {
                                   onChange={(e: any) => setDonationMethod(e.target.value)}
                                   className="w-full bg-white px-3 py-2 border border-slate-200 rounded-lg text-xs"
                                 >
-                                  <option value="Bank Transfer">Transfer Bank</option>
-                                  <option value="E-Wallet">Dompet Digital (E-Wallet)</option>
-                                  <option value="Cash">Tunai / Cash</option>
-                                  <option value="Crypto">Aset Kripto</option>
+                                  <option value="Bank Transfer">Bank Transfer</option>
+                                  <option value="E-Wallet">QRIS/Dompet Digital</option>
+                                  <option value="Cash">Tunai</option>
                                 </select>
                               </div>
 
@@ -4253,10 +4254,9 @@ export default function App() {
                         onChange={(e: any) => setPublicDonationMethod(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-xs focus:ring-1 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
                       >
-                        <option value="Bank Transfer">Transfer Bank Mandiri/BCA</option>
-                        <option value="E-Wallet">QRIS Dompet Digital (GoPay/OVO)</option>
-                        <option value="Cash">Tunai Handover Lapangan</option>
-                        <option value="Crypto">USDT Stablecoin (Crypto)</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                        <option value="E-Wallet">QRIS/Dompet Digital</option>
+                        <option value="Cash">Tunai</option>
                       </select>
                     </div>
 
