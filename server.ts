@@ -517,6 +517,37 @@ function getDBState() {
     saveDBState(state);
   }
 
+  // Ensure bankAccounts array exists to track bank accounts
+  if (!state.bankAccounts) {
+    state.bankAccounts = [
+      {
+        id: "bank-1",
+        bankName: "BCA",
+        accountNumber: "869-041-2026",
+        accountHolder: "PANITIA PEMBANGUNAN UTAMA",
+        qrCodeUrl: "",
+        isActive: true
+      },
+      {
+        id: "bank-2",
+        bankName: "MANDIRI",
+        accountNumber: "131-00-2026-0606",
+        accountHolder: "REKENING KAS IMAM MASJID",
+        qrCodeUrl: "",
+        isActive: true
+      },
+      {
+        id: "bank-3",
+        bankName: "USDT",
+        accountNumber: "TX9z4k1fLzW6v22E54RaUh9435b674b3Pq",
+        accountHolder: "TRC20 Wallet Address",
+        qrCodeUrl: "",
+        isActive: true
+      }
+    ];
+    saveDBState(state);
+  }
+
   return state;
 }
 
@@ -1051,9 +1082,50 @@ async function getProjectsFromDb() {
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
-      const projects = await prisma.project.findMany({
+      let projects = await prisma.project.findMany({
         orderBy: { createdAt: "desc" }
       });
+      
+      if (projects.length === 0) {
+        const config = await getProjectConfigFromDb();
+        if (config && config.initialized) {
+          const seeded = await prisma.project.create({
+            data: {
+              id: config.id || "project-default",
+              name: config.name || "Proyek Utama Pembangunan Masjid At-Taqwa",
+              type: config.type || "renovasi",
+              fundingSource: config.fundingSource || "donasi",
+              status: config.status || "public",
+              projectStatus: config.projectStatus || "berjalan",
+              budget: Number(config.budget || 1600000000),
+              description: config.description || "Pembangunan dan perluasan kapasitas ibadah utama serta fasilitas dakwah Masjid At-Taqwa.",
+              initializedBy: config.initializedBy || "Super Admin",
+              initializedAt: config.initializedAt ? new Date(config.initializedAt) : new Date()
+            }
+          });
+          projects = [seeded];
+          
+          // Sync with local memory JSON
+          const bk = getDBState();
+          if (!bk.projects) bk.projects = [];
+          if (bk.projects.length === 0) {
+            bk.projects.push({
+              id: config.id || "project-default",
+              name: config.name || "Proyek Utama Pembangunan Masjid At-Taqwa",
+              type: config.type || "renovasi",
+              fundingSource: config.fundingSource || "donasi",
+              status: config.status || "public",
+              projectStatus: config.projectStatus || "berjalan",
+              budget: Number(config.budget || 1600000000),
+              description: config.description || "Pembangunan dan perluasan kapasitas ibadah utama serta fasilitas dakwah Masjid At-Taqwa.",
+              initializedBy: config.initializedBy || "Super Admin",
+              initializedAt: config.initializedAt || new Date().toISOString()
+            });
+            saveDBState(bk);
+          }
+        }
+      }
+
       return projects.map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -1070,7 +1142,177 @@ async function getProjectsFromDb() {
       console.error("Prisma getProjectsFromDb failed, falling back", err);
     }
   }
-  return getDBState().projects || [];
+  
+  const db = getDBState();
+  if (db.projectConfig && db.projectConfig.initialized) {
+    if (!db.projects || db.projects.length === 0) {
+      db.projects = [{
+        id: db.projectConfig.id || "project-default",
+        name: db.projectConfig.name || "Proyek Utama Pembangunan Masjid At-Taqwa",
+        type: db.projectConfig.type || "renovasi",
+        fundingSource: db.projectConfig.fundingSource || "donasi",
+        status: db.projectConfig.status || "public",
+        projectStatus: db.projectConfig.projectStatus || "berjalan",
+        budget: Number(db.projectConfig.budget || 1600000000),
+        description: db.projectConfig.description || "Pembangunan dan perluasan kapasitas ibadah utama serta fasilitas dakwah Masjid At-Taqwa.",
+        initializedBy: db.projectConfig.initializedBy || "Super Admin",
+        initializedAt: db.projectConfig.initializedAt || new Date().toISOString()
+      }];
+      saveDBState(db);
+    }
+  }
+  return db.projects || [];
+}
+
+async function getBankAccounts() {
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      const accounts = await prisma.bankAccount.findMany({
+        orderBy: { createdAt: "asc" }
+      });
+      if (accounts && accounts.length > 0) {
+        return accounts.map((a: any) => ({
+          id: a.id,
+          bankName: a.bankName,
+          accountNumber: a.accountNumber,
+          accountHolder: a.accountHolder,
+          qrCodeUrl: a.qrCodeUrl || "",
+          isActive: a.isActive
+        }));
+      } else {
+        // Safe seeding in Postgres if active but empty
+        const defaults = [
+          { bankName: "BCA", accountNumber: "869-041-2026", accountHolder: "PANITIA PEMBANGUNAN UTAMA", qrCodeUrl: "", isActive: true },
+          { bankName: "MANDIRI", accountNumber: "131-00-2026-0606", accountHolder: "REKENING KAS IMAM MASJID", qrCodeUrl: "", isActive: true },
+          { bankName: "USDT", accountNumber: "TX9z4k1fLzW6v22E54RaUh9435b674b3Pq", accountHolder: "TRC20 Wallet Address", qrCodeUrl: "", isActive: true }
+        ];
+        const seededList = [];
+        for (const item of defaults) {
+          const created = await prisma.bankAccount.create({ data: item });
+          seededList.push({
+            id: created.id,
+            bankName: created.bankName,
+            accountNumber: created.accountNumber,
+            accountHolder: created.accountHolder,
+            qrCodeUrl: created.qrCodeUrl || "",
+            isActive: created.isActive
+          });
+        }
+        return seededList;
+      }
+    } catch (err) {
+      console.error("Prisma getBankAccounts failed, falling back", err);
+    }
+  }
+  return getDBState().bankAccounts || [];
+}
+
+async function addBankAccount(bankData: any) {
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      const created = await prisma.bankAccount.create({
+        data: {
+          bankName: bankData.bankName,
+          accountNumber: bankData.accountNumber,
+          accountHolder: bankData.accountHolder,
+          qrCodeUrl: bankData.qrCodeUrl || "",
+          isActive: bankData.isActive !== false
+        }
+      });
+      return {
+        id: created.id,
+        bankName: created.bankName,
+        accountNumber: created.accountNumber,
+        accountHolder: created.accountHolder,
+        qrCodeUrl: created.qrCodeUrl || "",
+        isActive: created.isActive
+      };
+    } catch (err) {
+      console.error("Prisma addBankAccount failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  if (!db.bankAccounts) db.bankAccounts = [];
+  const newAccount = {
+    id: bankData.id || "bank-" + Date.now(),
+    bankName: bankData.bankName,
+    accountNumber: bankData.accountNumber,
+    accountHolder: bankData.accountHolder,
+    qrCodeUrl: bankData.qrCodeUrl || "",
+    isActive: bankData.isActive !== false
+  };
+  db.bankAccounts.push(newAccount);
+  saveDBState(db);
+  return newAccount;
+}
+
+async function updateBankAccount(id: string, bankData: any) {
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      const updated = await prisma.bankAccount.update({
+        where: { id },
+        data: {
+          bankName: bankData.bankName,
+          accountNumber: bankData.accountNumber,
+          accountHolder: bankData.accountHolder,
+          qrCodeUrl: bankData.qrCodeUrl || "",
+          isActive: bankData.isActive
+        }
+      });
+      return {
+        id: updated.id,
+        bankName: updated.bankName,
+        accountNumber: updated.accountNumber,
+        accountHolder: updated.accountHolder,
+        qrCodeUrl: updated.qrCodeUrl || "",
+        isActive: updated.isActive
+      };
+    } catch (err) {
+      console.error("Prisma updateBankAccount failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  if (!db.bankAccounts) db.bankAccounts = [];
+  const idx = db.bankAccounts.findIndex((a: any) => a.id === id);
+  if (idx !== -1) {
+    db.bankAccounts[idx] = {
+      ...db.bankAccounts[idx],
+      bankName: bankData.bankName,
+      accountNumber: bankData.accountNumber,
+      accountHolder: bankData.accountHolder,
+      qrCodeUrl: bankData.qrCodeUrl || "",
+      isActive: bankData.isActive
+    };
+    saveDBState(db);
+    return db.bankAccounts[idx];
+  }
+  return null;
+}
+
+async function deleteBankAccount(id: string) {
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      await prisma.bankAccount.delete({
+        where: { id }
+      });
+      return true;
+    } catch (err) {
+      console.error("Prisma deleteBankAccount failed, falling back", err);
+    }
+  }
+  const db = getDBState();
+  if (!db.bankAccounts) db.bankAccounts = [];
+  const lengthBefore = db.bankAccounts.length;
+  db.bankAccounts = db.bankAccounts.filter((a: any) => a.id !== id);
+  if (db.bankAccounts.length !== lengthBefore) {
+    saveDBState(db);
+    return true;
+  }
+  return false;
 }
 
 // Global Authentication JWT Middleware
@@ -1814,6 +2056,113 @@ app.get("/api/financial-summary", async (req, res) => {
   } catch (error) {
     console.error("Financial summary calculation error:", error);
     res.status(500).json({ error: "Failed to calculate financial summary." });
+  }
+});
+
+// Bank Accounts Endpoints
+app.get("/api/bank-accounts", async (req, res) => {
+  try {
+    const list = await getBankAccounts();
+    res.json(list);
+  } catch (err) {
+    console.error("GET bank accounts error:", err);
+    res.status(500).json({ error: "Gagal mengambil daftar rekening bank." });
+  }
+});
+
+app.post("/api/bank-accounts", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  const { bankName, accountNumber, accountHolder, qrCodeUrl, isActive } = req.body;
+  if (!bankName || !accountNumber || !accountHolder) {
+    return res.status(400).json({ error: "Nama Bank, Nomor Rekening, dan Pemilik Rekening wajib diisi." });
+  }
+
+  try {
+    const newAccount = await addBankAccount({
+      bankName,
+      accountNumber,
+      accountHolder,
+      qrCodeUrl: qrCodeUrl || "",
+      isActive: isActive !== false
+    });
+
+    // Log the audit
+    await addAuditLog({
+      timestamp: new Date().toISOString(),
+      action: "CREATE",
+      tableName: "BankAccount",
+      recordId: newAccount.id,
+      changedBy: `${req.user.name} (${req.user.role})`,
+      details: `Menambahkan rekening bank baru: ${bankName} - No ${accountNumber} a/n ${accountHolder}`
+    });
+
+    res.status(201).json(newAccount);
+  } catch (err) {
+    console.error("POST bank account error:", err);
+    res.status(500).json({ error: "Gagal menambahkan rekening bank." });
+  }
+});
+
+app.put("/api/bank-accounts/:id", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  const { id } = req.params;
+  const { bankName, accountNumber, accountHolder, qrCodeUrl, isActive } = req.body;
+
+  if (!bankName || !accountNumber || !accountHolder) {
+    return res.status(400).json({ error: "Nama Bank, Nomor Rekening, dan Pemilik Rekening wajib diisi." });
+  }
+
+  try {
+    const updated = await updateBankAccount(id, {
+      bankName,
+      accountNumber,
+      accountHolder,
+      qrCodeUrl: qrCodeUrl || "",
+      isActive: isActive !== false
+    });
+
+    if (!updated) {
+      return res.status(404).json({ error: "Rekening tidak ditemukan." });
+    }
+
+    // Log the audit
+    await addAuditLog({
+      timestamp: new Date().toISOString(),
+      action: "UPDATE",
+      tableName: "BankAccount",
+      recordId: id,
+      changedBy: `${req.user.name} (${req.user.role})`,
+      details: `Memperbarui rekening bank: ${bankName} - No ${accountNumber} (Aktif: ${isActive ? 'Ya' : 'Tidak'})`
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error("PUT bank account error:", err);
+    res.status(500).json({ error: "Gagal mengubah rekening bank." });
+  }
+});
+
+app.delete("/api/bank-accounts/:id", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  const { id } = req.params;
+
+  try {
+    const success = await deleteBankAccount(id);
+    if (!success) {
+      return res.status(404).json({ error: "Rekening tidak ditemukan." });
+    }
+
+    // Log the audit
+    await addAuditLog({
+      timestamp: new Date().toISOString(),
+      action: "DELETE",
+      tableName: "BankAccount",
+      recordId: id,
+      changedBy: `${req.user.name} (${req.user.role})`,
+      details: `Menghapus rekening bank dengan ID: ${id}`
+    });
+
+    res.json({ message: "Rekening bank berhasil dihapus." });
+  } catch (err) {
+    console.error("DELETE bank account error:", err);
+    res.status(500).json({ error: "Gagal menghapus rekening bank." });
   }
 });
 

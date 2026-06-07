@@ -155,6 +155,23 @@ export default function GoogleDriveSheetsSync({
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${googleToken}` }
       });
+      
+      if (res.status === 401) {
+        setGoogleToken(null);
+        localStorage.removeItem("google_access_token");
+        addLog("error", "Sesi Google Account Anda telah berakhir (401 Unauthorized). Silakan hubungkan kembali akun Google Anda.");
+        throw new Error("Sesi Google Anda berakhir. Silakan hubungkan kembali akun Google Anda.");
+      }
+      
+      if (res.status === 403 || res.status === 404 || res.status === 400 || res.status === 451) {
+        setDriveFolderId("");
+        setDriveFolderUrl("");
+        localStorage.removeItem("smartbuild_drive_folder_id");
+        localStorage.removeItem("smartbuild_drive_folder_url");
+        addLog("info", "Folder Drive lama tidak dapat diakses atau dibatasi. Silakan mendirikan folder baru.");
+        throw new Error("Folder Drive lama tidak dapat diakses atau tidak ditemukan oleh akun Anda.");
+      }
+
       if (!res.ok) throw new Error("Gagal memuat list berkas Google Drive.");
       const data = await res.json();
       setDriveFiles(data.files || []);
@@ -205,6 +222,12 @@ export default function GoogleDriveSheetsSync({
             ]
           })
         });
+
+        if (response.status === 401) {
+          setGoogleToken(null);
+          localStorage.removeItem("google_access_token");
+          throw new Error("Sesi Google Anda berakhir. Silakan hubungkan kembali akun Google Anda.");
+        }
 
         if (!response.ok) {
           throw new Error("Gagal membuat Spreadsheet baru di Google Drive.");
@@ -268,6 +291,21 @@ export default function GoogleDriveSheetsSync({
           ]
         })
       });
+
+      if (syncResponse.status === 401) {
+        setGoogleToken(null);
+        localStorage.removeItem("google_access_token");
+        throw new Error("Sesi Google Anda berakhir. Silakan hubungkan kembali akun Google Anda.");
+      }
+      
+      if (syncResponse.status === 403 || syncResponse.status === 404) {
+        setSpreadsheetId("");
+        setSpreadsheetUrl("");
+        localStorage.removeItem("smartbuild_sheet_id");
+        localStorage.removeItem("smartbuild_sheet_url");
+        addLog("info", "File Spreadsheet lama tidak valid atau tidak diizinkan. Reset id terpasang.");
+        throw new Error("Kertas kerja spreadsheet lama tidak valid atau tidak diizinkan untuk akun Anda. Silakan coba klik tombol sinkronisasi ulang untuk merancang sheet baru.");
+      }
 
       if (!syncResponse.ok) {
         // If some sheets are missing, let's create them on the existing Spreadsheet
@@ -351,6 +389,12 @@ export default function GoogleDriveSheetsSync({
           })
         });
 
+        if (folderResponse.status === 401) {
+          setGoogleToken(null);
+          localStorage.removeItem("google_access_token");
+          throw new Error("Sesi Google Anda berakhir. Silakan hubungkan kembali akun Google Anda.");
+        }
+
         if (!folderResponse.ok) {
           throw new Error("Gagal mendirikan folder baru di Google Drive.");
         }
@@ -415,6 +459,20 @@ export default function GoogleDriveSheetsSync({
         body: form
       });
 
+      if (response.status === 401) {
+        setGoogleToken(null);
+        localStorage.removeItem("google_access_token");
+        throw new Error("Sesi Google Anda berakhir. Silakan hubungkan kembali akun Google Anda.");
+      }
+
+      if (response.status === 403 || response.status === 404 || response.status === 400) {
+        setDriveFolderId("");
+        setDriveFolderUrl("");
+        localStorage.removeItem("smartbuild_drive_folder_id");
+        localStorage.removeItem("smartbuild_drive_folder_url");
+        throw new Error("Folder Drive sebelumnya tidak dapat diakses atau telah dihapus. Silakan coba lagi untuk mendirikan folder penyimpanan baru.");
+      }
+
       if (!response.ok) {
         throw new Error("Proses upload ke server Google Drive ditolak.");
       }
@@ -473,6 +531,20 @@ export default function GoogleDriveSheetsSync({
         },
         body: form
       });
+
+      if (response.status === 401) {
+        setGoogleToken(null);
+        localStorage.removeItem("google_access_token");
+        throw new Error("Sesi Google Anda berakhir. Silakan hubungkan kembali akun Google Anda.");
+      }
+
+      if (response.status === 403 || response.status === 404 || response.status === 400) {
+        setDriveFolderId("");
+        setDriveFolderUrl("");
+        localStorage.removeItem("smartbuild_drive_folder_id");
+        localStorage.removeItem("smartbuild_drive_folder_url");
+        throw new Error("Folder Drive sebelumnya tidak dapat diakses atau telah dihapus. Silakan coba lagi untuk mendirikan folder penyimpanan baru.");
+      }
 
       if (!response.ok) {
         throw new Error("Gagal mengunggah berkas ke Google Drive cloud.");
@@ -539,6 +611,20 @@ export default function GoogleDriveSheetsSync({
         },
         body: form
       });
+
+      if (response.status === 401) {
+        setGoogleToken(null);
+        localStorage.removeItem("google_access_token");
+        throw new Error("Sesi Google Anda berakhir. Silakan hubungkan kembali akun Google Anda.");
+      }
+
+      if (response.status === 403 || response.status === 404 || response.status === 400) {
+        setDriveFolderId("");
+        setDriveFolderUrl("");
+        localStorage.removeItem("smartbuild_drive_folder_id");
+        localStorage.removeItem("smartbuild_drive_folder_url");
+        throw new Error("Folder Drive sebelumnya tidak dapat diakses atau telah dihapus. Silakan coba lagi untuk mendirikan folder penyimpanan baru.");
+      }
 
       if (!response.ok) {
         throw new Error("Respon Google Drive menolak server-side backup.");
@@ -822,10 +908,17 @@ export default function GoogleDriveSheetsSync({
                   </div>
                 </div>
               ) : (
-                <div className="border border-slate-100 rounded-xl p-4 text-center mt-4">
+                <div className="border border-slate-100 rounded-xl p-4 text-center mt-4 flex flex-col items-center justify-center gap-2">
                   <p className="text-slate-400 text-xs italic">
-                    Belum mendirikan folder eksternal. Kami akan mendirikannya saat upload berjalan pertama kali.
+                    Belum mendirikan folder eksternal. Kami akan mendirikannya saat upload berjalan pertama kali atau Anda dapat mendirikannya secara manual sekarang.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => initDriveFolder()}
+                    className="mt-1 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer"
+                  >
+                    Mendirikan Folder Baru Sekarang
+                  </button>
                 </div>
               )}
             </div>

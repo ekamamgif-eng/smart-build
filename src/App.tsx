@@ -39,7 +39,8 @@ import {
   Expenditure, 
   PhysicalProgress, 
   AuditLog,
-  Milestone
+  Milestone,
+  BankAccount
 } from "./types";
 import { ImageUploader } from "./components/ImageUploader";
 import { jsPDF } from "jspdf";
@@ -240,6 +241,15 @@ export default function App() {
   const [publicGatewaySuccess, setPublicGatewaySuccess] = useState("");
   const [publicGatewaySubmitting, setPublicGatewaySubmitting] = useState(false);
 
+  // Bank accounts states & management
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [editingBankAccountId, setEditingBankAccountId] = useState<string | null>(null);
+  const [bankNameForm, setBankNameForm] = useState("");
+  const [bankNumberForm, setBankNumberForm] = useState("");
+  const [bankHolderForm, setBankHolderForm] = useState("");
+  const [bankQrUrlForm, setBankQrUrlForm] = useState("");
+  const [bankIsActiveForm, setBankIsActiveForm] = useState(true);
+
   // UI status messages
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
@@ -280,14 +290,15 @@ export default function App() {
       setLoading(true);
       const activeToken = tokenOverride !== undefined ? tokenOverride : authToken;
       const headersOpt = activeToken ? { "Authorization": `Bearer ${activeToken}` } : {};
-      const [sumRes, donRes, expRes, progRes, auditRes, sysRes, mileRes] = await Promise.all([
+      const [sumRes, donRes, expRes, progRes, auditRes, sysRes, mileRes, bankRes] = await Promise.all([
         fetch("/api/financial-summary", { headers: headersOpt }),
         fetch("/api/donations", { headers: headersOpt }),
         fetch("/api/expenditures", { headers: headersOpt }),
         fetch("/api/progress", { headers: headersOpt }),
         fetch("/api/audit-logs", { headers: headersOpt }),
         fetch("/api/system-info"),
-        fetch("/api/milestones", { headers: headersOpt })
+        fetch("/api/milestones", { headers: headersOpt }),
+        fetch("/api/bank-accounts")
       ]);
 
       const sumData = await sumRes.json();
@@ -296,6 +307,7 @@ export default function App() {
       const progData = await progRes.json();
       const auditData = await auditRes.json();
       const mileData = mileRes.ok ? await mileRes.json() : [];
+      const bankData = bankRes.ok ? await bankRes.json() : [];
       let sysData = { version: "1.2.8", year: new Date().getFullYear() };
       try {
         if (sysRes.ok) {
@@ -312,6 +324,7 @@ export default function App() {
       setAuditLogs(auditData);
       setMilestones(mileData);
       setSystemInfo(sysData);
+      setBankAccounts(bankData);
 
       if (activeToken) {
         try {
@@ -752,6 +765,90 @@ export default function App() {
     setFormSuccess("Sesi Anda telah ditutup dengan aman.");
     setTimeout(() => setFormSuccess(""), 4000);
     fetchAllData(null);
+  };
+
+  const handleSaveBankAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    setFormSuccess("");
+
+    if (!bankNameForm.trim() || !bankNumberForm.trim() || !bankHolderForm.trim()) {
+      setFormError("Nama Bank, Nomor Rekening, dan Pemilik Rekening wajib diisi!");
+      return;
+    }
+
+    try {
+      const isEditing = editingBankAccountId !== null;
+      const url = isEditing ? `/api/bank-accounts/${editingBankAccountId}` : "/api/bank-accounts";
+      const method = isEditing ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({
+          bankName: bankNameForm,
+          accountNumber: bankNumberForm,
+          accountHolder: bankHolderForm,
+          qrCodeUrl: bankQrUrlForm,
+          isActive: bankIsActiveForm
+        })
+      });
+
+      if (res.ok) {
+        setFormSuccess(isEditing ? "Rekening bank berhasil dicatatkan ulang!" : "Rekening bank baru berhasil dipasang!");
+        setBankNameForm("");
+        setBankNumberForm("");
+        setBankHolderForm("");
+        setBankQrUrlForm("");
+        setBankIsActiveForm(true);
+        setEditingBankAccountId(null);
+        fetchAllData();
+        setTimeout(() => setFormSuccess(""), 4000);
+      } else {
+        const errorData = await res.json();
+        setFormError(errorData.error || "Gagal menyimpan rekening bank.");
+      }
+    } catch (err) {
+      setFormError("Gagal menyimpan rekening bank akibat gangguan koneksi.");
+    }
+  };
+
+  const handleEditBankAccount = (account: BankAccount) => {
+    setEditingBankAccountId(account.id);
+    setBankNameForm(account.bankName);
+    setBankNumberForm(account.accountNumber);
+    setBankHolderForm(account.accountHolder);
+    setBankQrUrlForm(account.qrCodeUrl || "");
+    setBankIsActiveForm(account.isActive);
+  };
+
+  const handleDeleteBankAccount = async (id: string) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus rekening bank ini dari portal tujuan donasi?")) {
+      return;
+    }
+    setFormError("");
+    setFormSuccess("");
+    try {
+      const res = await fetch(`/api/bank-accounts/${id}`, {
+        method: "DELETE",
+        headers: {
+          ...(authToken ? { "Authorization": `Bearer ${authToken}` } : {})
+        }
+      });
+      if (res.ok) {
+        setFormSuccess("Rekening bank berhasil dihapus!");
+        fetchAllData();
+        setTimeout(() => setFormSuccess(""), 4000);
+      } else {
+        const errorData = await res.json();
+        setFormError(errorData.error || "Gagal menghapus rekening bank.");
+      }
+    } catch (err) {
+      setFormError("Gagal menghapus rekening bank akibat gangguan koneksi.");
+    }
   };
 
   const handleInitializeProject = async (e: React.FormEvent) => {
@@ -3192,6 +3289,315 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* 💳 PENGATURAN REKENING BANK PENDANAAN (SUPER ADMIN SETUP) */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-bl-full border-b border-l border-slate-100 flex items-center justify-center pointer-events-none">
+                    <Coins className="h-6 w-6 text-slate-300" />
+                  </div>
+
+                  <div className="border-b border-slate-100 pb-4 pr-12">
+                    <span className="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md uppercase tracking-wider font-mono">
+                      MODUL UTAMA KEUANGAN
+                    </span>
+                    <h4 className="text-base font-bold text-slate-900 mt-2 flex items-center gap-2">
+                       Pengaturan Rekening Bank Pendanaan (Tujuan Donasi)
+                    </h4>
+                    <p className="text-xxs text-slate-500 mt-1 leading-relaxed">
+                      Konfigurasikan seluruh rekening bank resmi, e-wallet, atau wallet address cryptocurrency yang akan ditampilkan di portal donasi publik kami. Super Admin dapat menambahkan rekening, merubah status keaktifan, mengunggah QRIS, atau melakukan revitalisasi data donasi.
+                    </p>
+                  </div>
+
+                  {/* Split Layout: List of bank accounts & form */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    
+                    {/* LEFT PANEL: LIST OF CONFIGURED ACCOUNTS (7/12) */}
+                    <div className="lg:col-span-7 space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Rekening Terdaftar ({bankAccounts.length || 0})
+                        </span>
+                        {editingBankAccountId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingBankAccountId(null);
+                              setBankNameForm("");
+                              setBankNumberForm("");
+                              setBankHolderForm("");
+                              setBankQrUrlForm("");
+                              setBankIsActiveForm(true);
+                            }}
+                            className="text-xxs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-1 rounded border border-rose-100 cursor-pointer"
+                          >
+                            Batal Edit
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-3.5 max-h-[460px] overflow-y-auto pr-1">
+                        {bankAccounts.length === 0 ? (
+                          <div className="text-center py-12 border border-dashed border-slate-200 rounded-2xl bg-slate-50 text-slate-450 space-y-2">
+                            <Coins className="h-8 w-8 mx-auto text-slate-350" />
+                            <p className="text-xxs italic">Belum ada rekening bank yang disiapkan di database.</p>
+                          </div>
+                        ) : (
+                          bankAccounts.map((account) => {
+                            const isBeingEdited = editingBankAccountId === account.id;
+                            return (
+                              <div 
+                                key={account.id} 
+                                className={`border rounded-xl p-4 transition-all duration-200 relative overflow-hidden group ${
+                                  isBeingEdited 
+                                    ? "bg-amber-50/40 border-amber-400 border-2" 
+                                    : account.isActive 
+                                      ? "bg-white border-slate-200 hover:border-slate-350" 
+                                      : "bg-slate-50/55 border-slate-200 opacity-60 hover:opacity-100"
+                                }`}
+                              >
+                                {isBeingEdited && (
+                                  <div className="absolute top-0 right-0 bg-amber-500 text-white font-mono text-[8px] font-bold px-2.5 py-0.5 rounded-bl">
+                                    SEDANG DIEDIT
+                                  </div>
+                                )}
+
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="space-y-1.5 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded tracking-wide uppercase font-sans ${
+                                        account.bankName.toUpperCase().includes("BCA") 
+                                          ? "bg-blue-650 text-white" 
+                                          : account.bankName.toUpperCase().includes("MANDIRI") 
+                                            ? "bg-teal-600 text-white" 
+                                            : account.bankName.toUpperCase().includes("USDT") || account.bankName.toUpperCase().includes("CRYPTO")
+                                              ? "bg-amber-500 text-white" 
+                                              : "bg-emerald-600 text-white"
+                                      }`}>
+                                        {account.bankName}
+                                      </span>
+                                      
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-mono ${
+                                        account.isActive 
+                                          ? "bg-emerald-50 text-emerald-850 border border-emerald-100" 
+                                          : "bg-slate-100 text-slate-500 border border-slate-200"
+                                      }`}>
+                                        {account.isActive ? "● AKTIF" : "○ NONAKTIF"}
+                                      </span>
+                                    </div>
+
+                                    <div>
+                                      <p className="text-[10px] text-slate-450 uppercase tracking-wide font-sans">Nama Pemilik Akun / Holder</p>
+                                      <h5 className="text-xs font-bold text-slate-800 font-sans">{account.accountHolder}</h5>
+                                    </div>
+
+                                    <div>
+                                      <p className="text-[10px] text-slate-450 uppercase tracking-wide font-sans">Nomor Rekening / Wallet Address</p>
+                                      <p className="text-xs font-semibold font-mono text-slate-800">{account.accountNumber}</p>
+                                    </div>
+
+                                    {account.qrCodeUrl && (
+                                      <div className="pt-1.5 flex items-center gap-2">
+                                        <QrCode className="h-4 w-4 text-slate-400" />
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedReceiptUrl(account.qrCodeUrl || "")}
+                                          className="text-xxs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 cursor-pointer flex items-center gap-1"
+                                        >
+                                          🔍 Lihat Barcode QRIS
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Right side controls per account */}
+                                  <div className="flex flex-col gap-1.5 self-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEditBankAccount(account)}
+                                      className="py-1 px-2.5 border border-slate-200 hover:border-slate-300 bg-slate-50 text-slate-700 rounded text-[10px] font-bold transition cursor-pointer hover:bg-slate-100"
+                                    >
+                                      Edit Info
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteBankAccount(account.id)}
+                                      className="py-1 px-2.5 border border-red-200 bg-red-50 text-red-750 rounded text-[10px] font-bold transition hover:bg-red-100 cursor-pointer"
+                                    >
+                                      Hapus
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* RIGHT PANEL: FORM TO CREATE / EDIT ACCOUNTS WITH INTERACTIVE VISUAL PREVIEW */}
+                    <div className="lg:col-span-5 space-y-5">
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+                        <div className="border-b border-slate-200 pb-2">
+                          <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
+                            {editingBankAccountId ? "✍️ Edit Rekening Terpilih" : "➕ Daftarkan Rekening Baru"}
+                          </h5>
+                          <p className="text-[10px] text-slate-400">Lengkapi formulir identifikasi rekening.</p>
+                        </div>
+
+                        <form onSubmit={handleSaveBankAccount} className="space-y-4 text-xs">
+                          {/* Nama Bank */}
+                          <div className="flex flex-col space-y-1">
+                            <label className="text-slate-650 font-bold">Nama Bank / Jenis Saluran *</label>
+                            <input 
+                              type="text"
+                              value={bankNameForm}
+                              onChange={(e) => setBankNameForm(e.target.value)}
+                              placeholder="Misal: BCA, MANDIRI, QRIS, USDT"
+                              required
+                              className="w-full bg-white border border-slate-250 px-3 py-1.5 rounded-lg text-xs font-sans focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold uppercase"
+                            />
+                            {/* Quick recommendation tags */}
+                            <div className="flex flex-wrap gap-1 pt-1">
+                              {["BCA", "MANDIRI", "BNI", "BRI", "QRIS", "USDT"].map((tag) => (
+                                <button
+                                  type="button"
+                                  key={tag}
+                                  onClick={() => setBankNameForm(tag)}
+                                  className="text-[9px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 font-mono px-2 py-0.5 rounded transition cursor-pointer"
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Nomor Rekening */}
+                          <div className="flex flex-col space-y-1">
+                            <label className="text-slate-650 font-bold">Nomor Rekening / ID Wallet *</label>
+                            <input 
+                              type="text"
+                              value={bankNumberForm}
+                              onChange={(e) => setBankNumberForm(e.target.value)}
+                              placeholder="Ketik tanpa strip atau spasi..."
+                              required
+                              className="w-full bg-white border border-slate-250 px-3 py-1.5 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold"
+                            />
+                          </div>
+
+                          {/* Pemilik Rekening */}
+                          <div className="flex flex-col space-y-1">
+                            <label className="text-slate-650 font-bold">Nama Atas Nama Pemilik *</label>
+                            <input 
+                              type="text"
+                              value={bankHolderForm}
+                              onChange={(e) => setBankHolderForm(e.target.value)}
+                              placeholder="Misal: BENDAHARA MASJID RAYA"
+                              required
+                              className="w-full bg-white border border-slate-250 px-3 py-1.5 rounded-lg text-xs font-sans focus:outline-none focus:ring-1 focus:ring-amber-500 uppercase font-medium"
+                            />
+                          </div>
+
+                          {/* QR Code Uploader */}
+                          <div className="space-y-1">
+                            <ImageUploader
+                              label="Upload QRIS Pembayaran (Opsional, format Image)"
+                              value={bankQrUrlForm}
+                              onChange={setBankQrUrlForm}
+                              required={false}
+                            />
+                          </div>
+
+                          {/* Keaktifan */}
+                          <div className="flex items-center space-x-2 pt-1">
+                            <input 
+                              type="checkbox"
+                              id="bankIsActive"
+                              checked={bankIsActiveForm}
+                              onChange={(e) => setBankIsActiveForm(e.target.checked)}
+                              className="rounded text-amber-600 focus:ring-amber-550 w-4 h-4 cursor-pointer"
+                            />
+                            <label htmlFor="bankIsActive" className="text-xxs text-slate-700 font-semibold font-sans cursor-pointer select-none">
+                              Tampilkan rekening langsung ke pintu donatur
+                            </label>
+                          </div>
+
+                          {/* Form Control Buttons */}
+                          <div className="flex gap-2 pt-2 border-t border-slate-200">
+                            {editingBankAccountId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBankAccountId(null);
+                                  setBankNameForm("");
+                                  setBankNumberForm("");
+                                  setBankHolderForm("");
+                                  setBankQrUrlForm("");
+                                  setBankIsActiveForm(true);
+                                }}
+                                className="w-1/3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] rounded-lg transition text-center cursor-pointer"
+                              >
+                                Batal
+                              </button>
+                            )}
+                            <button
+                              type="submit"
+                              className={`py-2 font-bold text-[10px] rounded-lg transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer text-white shadow-xs ${
+                                editingBankAccountId 
+                                  ? "w-2/3 bg-amber-650 hover:bg-amber-600" 
+                                  : "w-full bg-emerald-600 hover:bg-emerald-555"
+                              }`}
+                            >
+                              <Check className="h-3 w-3" />
+                              <span>{editingBankAccountId ? "Simpan Perubahan" : "Pasang Rekening Baru"}</span>
+                            </button>
+                          </div>
+
+                        </form>
+                      </div>
+
+                      {/* 💳 INTERACTIVE SMART CARD PREVIEW */}
+                      <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-850 shadow-md relative overflow-hidden space-y-4">
+                        <div className="absolute top-0 right-0 w-36 h-36 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                        <div className="absolute -bottom-8 -left-8 w-24 h-24 bg-blue-600/15 rounded-full blur-xl pointer-events-none"></div>
+
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-0.5">
+                            <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest block font-sans">Official Channel Card</span>
+                            <span className="text-xs font-black tracking-wide uppercase font-mono bg-white/10 px-2 py-0.5 rounded">
+                              {bankNameForm ? bankNameForm : "BANK NAMA"}
+                            </span>
+                          </div>
+                          <div className="h-6 w-8 bg-slate-800 rounded-md border border-slate-700 flex items-center justify-center font-bold text-[8px] font-mono tracking-tight text-slate-300">
+                            PORTAL
+                          </div>
+                        </div>
+
+                        <div className="pt-2">
+                          <span className="text-[7.5px] font-bold text-slate-500 uppercase tracking-wider block font-sans mb-1">No. Rekening / Wallet</span>
+                          <p className="text-xs font-mono font-bold tracking-widest text-white leading-none">
+                            {bankNumberForm ? bankNumberForm : "•••• •••• •••• ••••"}
+                          </p>
+                        </div>
+
+                        <div className="flex justify-between items-end pt-2 border-t border-white/5">
+                          <div className="space-y-0.5">
+                            <span className="text-[7px] font-bold text-slate-500 uppercase tracking-wider block font-sans">Account Holder</span>
+                            <p className="text-[10px] font-bold uppercase font-sans tracking-wide truncate max-w-[190px]">
+                              {bankHolderForm ? bankHolderForm : "Atas Nama Penerima"}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-[8px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold block leading-none">
+                              {bankIsActiveForm ? "ACTIVE" : "DISABLED"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  </div>
+                </div>
+
                 <form onSubmit={handleInitializeProject} className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-8 shadow-xs">
                   
                   {/* 1. Project Basic Details */}
@@ -3673,84 +4079,114 @@ export default function App() {
                   
                   {/* Payment Portals Info Section */}
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 space-y-3">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Panduan Transfer Tujuan Resmi</span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Panduan Transfer Tujuan Resmi (Daftar Terverifikasi)</span>
                     
                     {publicDonationMethod === "Bank Transfer" ? (
                       <div className="space-y-2">
-                        <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-150 shadow-xs">
-                          <div className="space-y-0.5">
-                            <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
-                              <span className="bg-blue-600 text-white font-extrabold px-1 rounded text-[8px] tracking-wider uppercase font-sans">BCA</span> 
-                              PANITIA PEMBANGUNAN UTAMA
-                            </span>
-                            <p className="text-xxs font-mono font-semibold text-slate-500">No. Rekening: 869-041-2026</p>
+                        {bankAccounts
+                          .filter(acc => acc.isActive && !["QRIS", "GOPAY", "OVO", "DANA", "USDT", "CRYPTO"].some(k => acc.bankName.toUpperCase().includes(k)))
+                          .map((acc) => (
+                            <div key={acc.id} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-150 shadow-xs">
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
+                                  <span className="bg-blue-600 text-white font-extrabold px-1 rounded text-[8px] tracking-wider uppercase font-sans">
+                                    {acc.bankName}
+                                  </span> 
+                                  {acc.accountHolder}
+                                </span>
+                                <p className="text-xxs font-mono font-semibold text-slate-500">No. Rekening: {acc.accountNumber}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(acc.accountNumber);
+                                  alert(`Nomor rekening ${acc.bankName} berhasil disalin!`);
+                                }}
+                                className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-2.5 py-1 rounded text-[10px] font-bold transition font-sans cursor-pointer whitespace-nowrap text-xxs"
+                              >
+                                Salin
+                              </button>
+                            </div>
+                          ))}
+                        {bankAccounts.filter(acc => acc.isActive && !["QRIS", "GOPAY", "OVO", "DANA", "USDT", "CRYPTO"].some(k => acc.bankName.toUpperCase().includes(k))).length === 0 && (
+                          <div className="text-slate-400 py-1 text-center font-sans text-[11px] italic">
+                            Belum ada tujuan transfer bank aktif yang disediakan saat ini.
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText("8690412026");
-                              alert("Nomor rekening BCA berhasil disalin!");
-                            }}
-                            className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-2.5 py-1 rounded text-[10px] font-bold transition font-sans cursor-pointer"
-                          >
-                            Salin
-                          </button>
-                        </div>
-
-                        <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-150 shadow-xs">
-                          <div className="space-y-0.5">
-                            <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
-                              <span className="bg-emerald-600 text-white font-extrabold px-1 rounded text-[8px] tracking-wider uppercase font-sans mt-0.5">MANDIRI</span> 
-                              REKENING KAS IMAM MASJID
-                            </span>
-                            <p className="text-xxs font-mono font-semibold text-slate-500">No. Rekening: 131-00-2026-0606</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText("1310020260606");
-                              alert("Nomor rekening Mandiri berhasil disalin!");
-                            }}
-                            className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-2.5 py-1 rounded text-[10px] font-bold transition font-sans cursor-pointer"
-                          >
-                            Salin
-                          </button>
-                        </div>
+                        )}
                       </div>
                     ) : publicDonationMethod === "E-Wallet" ? (
                       <div className="flex flex-col items-center justify-center bg-white p-3.5 rounded-lg border border-slate-150 shadow-xs space-y-2">
-                        <img 
-                          src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=qris-panitia-pembangunan-masjid-terpercaya" 
-                          alt="Mock QRIS Resmi"
-                          className="w-28 h-28 object-contain mix-blend-multiply" 
-                          referrerPolicy="no-referrer"
-                        />
-                        <span className="text-[9px] font-sans font-bold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-100">QRIS STANDAR NASIONAL</span>
-                        <p className="text-slate-400 text-[9.5px] text-center max-w-xs">Silakan pangkas dan simpan QRIS di atas untuk dipindai menggunakan aplikasi dana transfer e-wallet (GoPay, OVO, ShopeePay, LinkAja, BCA Mobile)</p>
+                        {bankAccounts
+                          .filter(acc => acc.isActive && (acc.qrCodeUrl || ["QRIS", "GOPAY", "OVO", "DANA"].some(k => acc.bankName.toUpperCase().includes(k))))
+                          .map((acc) => (
+                            <div key={acc.id} className="w-full flex flex-col items-center justify-center space-y-2 py-2 border-b last:border-b-0 border-slate-100 pb-2">
+                              <img 
+                                src={acc.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=qris-resmi-${acc.accountNumber}`} 
+                                alt={`QRIS ${acc.bankName} Resmi`}
+                                className="w-28 h-28 object-contain border border-slate-100 rounded p-1 p-0.5" 
+                                referrerPolicy="no-referrer"
+                              />
+                              <span className="text-[9px] font-sans font-bold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-100 uppercase mt-1">
+                                {acc.bankName} STANDAR NASIONAL
+                              </span>
+                              <p className="text-slate-800 text-[10px] font-bold text-center">a/n {acc.accountHolder}</p>
+                              <p className="text-slate-450 text-[9.5px] text-center max-w-xs">Pindai atau simpan QRIS di atas untuk dipindai menggunakan aplikasi keuangan dompet digital Anda.</p>
+                            </div>
+                          ))}
+                        {bankAccounts.filter(acc => acc.isActive && (acc.qrCodeUrl || ["QRIS", "GOPAY", "OVO", "DANA"].some(k => acc.bankName.toUpperCase().includes(k)))).length === 0 && (
+                          <div className="w-full flex flex-col items-center justify-center py-4 text-center">
+                            <img 
+                              src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=qris-panitia-pembangunan-masjid-terpercaya" 
+                              alt="Mock QRIS Resmi"
+                              className="w-24 h-24 object-contain mix-blend-multiply opacity-60" 
+                              referrerPolicy="no-referrer"
+                            />
+                            <p className="text-slate-450 py-1 text-center font-sans text-[11px] italic mt-1 font-medium">
+                              Belum ada QRIS/E-Wallet aktif di dalam database.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     ) : publicDonationMethod === "Crypto" ? (
-                      <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-150 shadow-xs">
-                        <div className="space-y-0.5 max-w-[80%]">
-                          <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
-                            <span className="bg-amber-500 text-white font-extrabold px-1 rounded text-[8px] tracking-wider uppercase font-sans">USDT</span> 
-                            TRC20 Wallet Address
-                          </span>
-                          <p className="text-[9px] font-mono break-all text-slate-500">TX9z4k1fLzW6v22E54RaUh9435b674b3Pq</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText("TX9z4k1fLzW6v22E54RaUh9435b674b3Pq");
-                            alert("Alamat wallet crypto berhasil disalin!");
-                          }}
-                          className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-2.5 py-1 rounded text-[10px] font-bold transition font-sans cursor-pointer"
-                        >
-                          Salin
-                        </button>
+                      <div className="space-y-2">
+                        {bankAccounts
+                          .filter(acc => acc.isActive && ["USDT", "CRYPTO", "ETH", "BTC"].some(k => acc.bankName.toUpperCase().includes(k)))
+                          .map((acc) => (
+                            <div key={acc.id} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-150 shadow-xs">
+                              <div className="space-y-1 max-w-[80%]">
+                                <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
+                                  <span className="bg-amber-500 text-white font-extrabold px-1 rounded text-[8px] tracking-wider uppercase font-sans">
+                                    {acc.bankName}
+                                  </span> 
+                                  {acc.accountHolder}
+                                </span>
+                                <p className="text-[9px] font-mono break-all text-slate-500">{acc.accountNumber}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(acc.accountNumber);
+                                  alert(`Alamat wallet ${acc.bankName} berhasil disalin!`);
+                                }}
+                                className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-2.5 py-1 rounded text-[10px] font-bold transition font-sans cursor-pointer whitespace-nowrap text-xxs"
+                              >
+                                Salin
+                              </button>
+                            </div>
+                          ))}
+                        {bankAccounts.filter(acc => acc.isActive && ["USDT", "CRYPTO", "ETH", "BTC"].some(k => acc.bankName.toUpperCase().includes(k))).length === 0 && (
+                          <p className="text-slate-450 py-1 text-center font-sans text-[11px] italic">
+                            Belum ada alamat dompet cryptocurrency yang disediakan saat ini.
+                          </p>
+                        )}
                       </div>
                     ) : (
-                      <div className="bg-white p-3 rounded-lg border border-slate-150 shadow-xs text-slate-500 text-xxs">
-                        Serahkan donasi langsung dalam tunai ke Kantor Yayasan Sekretariat / Kotak Amal Utama Masjid Pembangunan Utama. Tetap unggah foto slip penyerimaan resmi di kolom berikut.
+                      <div className="bg-white p-3 rounded-lg border border-slate-150 shadow-xs text-slate-500 text-xxs leading-relaxed">
+                        {summary?.projectConfig?.name ? (
+                          `Serahkan donasi langsung dalam tunai ke Kantor Yayasan Sekretariat / Kotak Amal Utama Masjid untuk proyek ${summary.projectConfig.name}. Tetap unggah foto slip penyerimaan resmi di kolom berikut.`
+                        ) : (
+                          `Serahkan donasi langsung dalam tunai ke Kantor Yayasan Sekretariat / Kotak Amal Utama Masjid Pembangunan Utama. Tetap unggah foto slip penyerimaan resmi di kolom berikut.`
+                        )}
                       </div>
                     )}
                   </div>

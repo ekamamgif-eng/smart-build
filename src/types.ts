@@ -68,3 +68,13 @@ export interface Milestone {
   progressNotes?: string;
 }
 
+export interface BankAccount {
+  id: string;
+  bankName: string; // e.g., "BCA", "Mandiri", "QRIS", "USDT"
+  accountNumber: string;
+  accountHolder: string;
+  qrCodeUrl?: string; // custom QR code image url if any
+  isActive: boolean;
+}
+
+

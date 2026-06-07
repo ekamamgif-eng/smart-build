@@ -145,3 +145,15 @@ model Project {
   updatedAt      DateTime @updatedAt
 }
 
+model BankAccount {
+  id            String   @id @default(uuid())
+  bankName      String   // e.g., "BCA", "Mandiri", "QRIS", "USDT"
+  accountNumber String
+  accountHolder String
+  qrCodeUrl     String?  // custom QR code image
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+
