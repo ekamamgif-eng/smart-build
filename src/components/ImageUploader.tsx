@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Upload, Loader2 } from "lucide-react";
+import { Upload, Loader2, AlertCircle } from "lucide-react";
 
 interface ImageUploaderProps {
   label: string;
@@ -257,7 +257,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
           {uploadError && (
             <p className="text-[10px] text-rose-600 bg-rose-50 p-2 border border-rose-100 rounded-md flex items-center gap-1 font-semibold">
-              ⚠️ {uploadError}
+              <AlertCircle className="h-3 w-3 shrink-0 text-rose-600" />
+              {uploadError}
             </p>
           )}
         </div>

@@ -32,9 +32,24 @@ import {
   Cloud,
   QrCode,
   Smartphone,
-  Database
+  Database,
+  Crown,
+  Lightbulb,
+  ShieldCheck,
+  Hammer,
+  AlertCircle,
+  Lock
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip
+} from "recharts";
 import { 
   RABItem, 
   Donation, 
@@ -70,6 +85,31 @@ export const formatCurrency = (value: number) => {
   }).format(value);
 };
 
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: any[];
+  label?: string;
+}
+
+const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-slate-900 text-white p-3 rounded-lg shadow-lg border border-slate-800 font-mono text-xs">
+        <p className="font-sans font-bold text-slate-350 mb-1.5">{label}</p>
+        {payload.map((pld: any) => (
+          <div key={pld.name} className="flex justify-between gap-6 py-0.5">
+            <span className="capitalize" style={{ color: pld.color }}>
+              ● {pld.name}:
+            </span>
+            <span className="font-bold">{formatCurrency(pld.value)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
 export const translateCategory = (cat: string) => {
   const mapping: Record<string, string> = {
     Foundation: "Fondasi & Pematangan Lahan",
@@ -89,7 +129,7 @@ export const translateCategory = (cat: string) => {
 
 export const translatePaymentMethod = (method: string) => {
   const mapping: Record<string, string> = {
-    "Bank Transfer": "Bank Transfer",
+    "Bank Transfer": "Transfer Bank",
     "E-Wallet": "QRIS/Dompet Digital",
     Cash: "Tunai",
     Crypto: "Kripto"
@@ -186,7 +226,7 @@ export default function App() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [systemInfo, setSystemInfo] = useState<{ version: string; year: number }>({
-    version: "1.2.8",
+    version: "2.0.0",
     year: new Date().getFullYear(),
   });
 
@@ -352,7 +392,7 @@ export default function App() {
       const auditData = await auditRes.json();
       const mileData = mileRes.ok ? await mileRes.json() : [];
       const bankData = bankRes.ok ? await bankRes.json() : [];
-      let sysData = { version: "1.2.8", year: new Date().getFullYear() };
+      let sysData = { version: "2.0.0", year: new Date().getFullYear() };
       try {
         if (sysRes.ok) {
           sysData = await sysRes.json();
@@ -1472,6 +1512,82 @@ export default function App() {
     }
   };
 
+  // Aggregated donations and expenditures by month for recharts trend lines
+  const getMonthlyTrends = () => {
+    const monthsMap: Record<string, { donations: number; expenditures: number; dateVal: Date }> = {};
+
+    // Donasi
+    donations.forEach((d) => {
+      if (d.status === 'APPROVED' || !d.status) { // Count approved donations
+        const date = new Date(d.date);
+        if (isNaN(date.getTime())) return;
+        
+        const year = date.getFullYear();
+        const monthIndex = date.getMonth(); // 0-11
+        const key = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+        
+        if (!monthsMap[key]) {
+          monthsMap[key] = { donations: 0, expenditures: 0, dateVal: new Date(year, monthIndex, 1) };
+        }
+        monthsMap[key].donations += d.amount;
+      }
+    });
+
+    // Pengeluaran
+    expenditures.forEach((e) => {
+      const date = new Date(e.date);
+      if (isNaN(date.getTime())) return;
+
+      const year = date.getFullYear();
+      const monthIndex = date.getMonth();
+      const key = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+      if (!monthsMap[key]) {
+        monthsMap[key] = { donations: 0, expenditures: 0, dateVal: new Date(year, monthIndex, 1) };
+      }
+      monthsMap[key].expenditures += e.totalPrice;
+    });
+
+    const indonesianMonths = [
+      "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", 
+      "Jul", "Agt", "Sep", "Okt", "Nov", "Des"
+    ];
+
+    const chartData = Object.keys(monthsMap)
+      .sort() // sort YYYY-MM
+      .map((key) => {
+        const item = monthsMap[key];
+        const monthLabel = indonesianMonths[item.dateVal.getMonth()];
+        const yearLabel = item.dateVal.getFullYear().toString().substring(2);
+        return {
+          key,
+          name: `${monthLabel} '${yearLabel}`,
+          Donasi: item.donations,
+          Pengeluaran: item.expenditures,
+        };
+      });
+
+    // Fallback if chartData is empty, return last 6 months with 0 value
+    if (chartData.length === 0) {
+      const now = new Date();
+      const results = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthLabel = indonesianMonths[d.getMonth()];
+        const yearLabel = d.getFullYear().toString().substring(2);
+        results.push({
+          key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+          name: `${monthLabel} '${yearLabel}`,
+          Donasi: 0,
+          Pengeluaran: 0
+        });
+      }
+      return results;
+    }
+
+    return chartData;
+  };
+
   // Combine, sort and filter ledger collections
   const getCombinedLedger = () => {
     const list: Array<{
@@ -1825,22 +1941,24 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col antialiased">
       {/* Top Navigation & Global Identity */}
-      <header className="sticky top-0 z-40 h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 flex-shrink-0 shadow-xs">
+      <header className="sticky top-0 z-40 h-16 lg:h-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 flex-shrink-0 shadow-xs">
         {/* Left Side: Branding */}
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
+        <div className="flex items-center gap-2.5 cursor-pointer flex-shrink-0" onClick={() => setActiveTab("dashboard")}>
           <img 
             src={projectLogo} 
             alt="SmartBuild Logo" 
-            className="h-[36px] w-[36px] object-contain flex-shrink-0"
+            className="h-8 w-8 lg:h-9 lg:w-9 object-contain flex-shrink-0"
             referrerPolicy="no-referrer" 
           />
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-slate-800"><span className="text-emerald-600 font-extrabold">SmartBuild</span></h1>
+            <h1 className="text-base lg:text-lg font-bold tracking-tight text-slate-800 leading-none">
+              <span className="text-emerald-600 font-extrabold">SmartBuild</span>
+            </h1>
           </div>
         </div>
 
         {/* Center Side: Desktop Portal Tabs */}
-        <nav className="hidden md:flex space-x-1.5 bg-slate-100 p-1 rounded-xl">
+        <nav className="hidden lg:flex space-x-1.5 bg-slate-100 p-1 rounded-xl">
           <button
             onClick={() => setActiveTab("dashboard")}
             className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 ${
@@ -1869,7 +1987,7 @@ export default function App() {
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
             }`}
           >
-            Project Manager
+            Manajer Proyek
           </button>
           {currentUser?.role === 'ADMIN' && (
             <button
@@ -1887,22 +2005,37 @@ export default function App() {
         </nav>
 
         {/* Right Side: Integrity status */}
-        <div className="flex items-center gap-4">
-          <div className="text-right hidden sm:block">
+        <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+          <div className="text-right hidden xl:block">
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">DATABASE</p>
             <p className="text-xs text-emerald-500 flex items-center gap-1 font-bold italic justify-end">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> AKTIF
             </p>
           </div>
-          <div className="h-10 w-px bg-slate-200 hidden sm:block"></div>
+          <div className="h-10 w-px bg-slate-200 hidden xl:block"></div>
           
           {currentUser ? (
             <div className="flex items-center gap-3">
-              <div className="text-right hidden md:block">
+              <div className="text-right hidden lg:block">
                 <p className="text-xs font-bold text-slate-800 leading-tight">{currentUser.name}</p>
-                <p className="text-[10px] font-mono font-extrabold text-amber-600 leading-none mt-1">
-                  {currentUser.role === 'ADMIN' ? '👑 SUPER ADMIN' : currentUser.role === 'TREASURER' ? '💰 BENDAHARA' : '🧱 PROJECT MANAGER'}
-                </p>
+                <div className="flex items-center gap-1 justify-end font-mono font-extrabold text-amber-600 leading-none mt-1">
+                  {currentUser.role === 'ADMIN' ? (
+                    <>
+                      <Crown className="h-3 w-3 text-amber-500 shrink-0" />
+                      <span className="text-[10px]">SUPER ADMIN</span>
+                    </>
+                  ) : currentUser.role === 'TREASURER' ? (
+                    <>
+                      <Coins className="h-3 w-3 text-amber-500 shrink-0" />
+                      <span className="text-[10px]">BENDAHARA</span>
+                    </>
+                  ) : (
+                    <>
+                      <Hammer className="h-3 w-3 text-amber-500 shrink-0" />
+                      <span className="text-[10px]">PROJECT MANAGER</span>
+                    </>
+                  )}
+                </div>
               </div>
               <button 
                 onClick={handleLogoutAction}
@@ -1918,7 +2051,7 @@ export default function App() {
                 setLoginErrorState("");
                 setIsLoginModalOpen(true);
               }}
-              className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <UserCheck className="h-4 w-4" />
               <span>Login</span>
@@ -1928,7 +2061,7 @@ export default function App() {
       </header>
 
       {/* Mobile Actions Ribbon */}
-      <div className="md:hidden sticky top-20 z-30 bg-white border-b border-slate-200 flex overflow-x-auto whitespace-nowrap py-2.5 px-4 space-x-2 scrollbar-none">
+      <div className="lg:hidden sticky top-16 z-30 bg-white border-b border-slate-200 flex overflow-x-auto whitespace-nowrap py-2.5 px-4 space-x-2 scrollbar-none">
         <button
           onClick={() => setActiveTab("dashboard")}
           className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
@@ -2153,6 +2286,94 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Monthly Trend Chart */}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="bg-emerald-100 text-emerald-700 rounded-lg p-2 flex items-center justify-center">
+                        <Coins className="h-4.5 w-4.5" />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-slate-800 text-sm">Tren Akumulasi & Mutasi Bulanan</h3>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Visualisasi perbandingan total donasi masuk vs belanja pengeluaran</p>
+                      </div>
+                    </div>
+                    {/* Inline chart legend */}
+                    <div className="flex items-center gap-4 text-[11px] font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                        <span className="text-slate-600">Donasi Masuk</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
+                        <span className="text-slate-600">Total Pengeluaran</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-64 w-full pt-1.5 min-h-[220px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={getMonthlyTrends()}
+                        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="colorDonasi" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorPengeluaran" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.15}/>
+                            <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke="#94a3b8" 
+                          fontSize={10}
+                          fontFamily="monospace"
+                          tickLine={false}
+                          axisLine={false}
+                          dy={8}
+                        />
+                        <YAxis 
+                          stroke="#94a3b8" 
+                          fontSize={9}
+                          fontFamily="monospace"
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(val) => {
+                            if (val >= 1_000_000_000) return `Rp ${(val / 1_000_000_000).toFixed(1)}M`;
+                            if (val >= 1_000_000) return `Rp ${(val / 1_000_000).toFixed(0)}jt`;
+                            if (val >= 1_000) return `Rp ${(val / 1_000).toFixed(0)}rb`;
+                            return `Rp ${val}`;
+                          }}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Area 
+                          type="monotone" 
+                          dataKey="Donasi" 
+                          stroke="#10b981" 
+                          strokeWidth={2}
+                          fillOpacity={1} 
+                          fill="url(#colorDonasi)" 
+                          activeDot={{ r: 5 }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="Pengeluaran" 
+                          stroke="#f43f5e" 
+                          strokeWidth={2}
+                          fillOpacity={1} 
+                          fill="url(#colorPengeluaran)" 
+                          activeDot={{ r: 5 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
                 {/* Visual Ledger Splits (Full width main table + double-column secondary grid below) */}
                 <div className="space-y-6">
                   
@@ -2256,8 +2477,9 @@ export default function App() {
                       </table>
                     </div>
                     <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
-                      <span className="text-xs font-bold text-slate-400 font-mono uppercase tracking-wider block">
-                        🔒 INTEGRITAS DATA MUTASI AUDIT DENGAN TRANSAKSI FISIK TERVERIFIKASI
+                      <span className="text-xs font-bold text-slate-400 font-mono uppercase tracking-wider flex items-center justify-center gap-1.5">
+                        <Lock className="h-3.5 w-3.5 text-slate-450 shrink-0" />
+                        <span>INTEGRITAS DATA MUTASI AUDIT DENGAN TRANSAKSI FISIK TERVERIFIKASI</span>
                       </span>
                     </div>
                   </div>
@@ -2411,7 +2633,13 @@ export default function App() {
                                 : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
                             }`}
                           >
-                            {!["20000", "50000", "100000", "250000", "500000"].includes(qrAmountPreset) ? "Kustom ✓" : "Kustom..."}
+                            {!["20000", "50000", "100000", "250000", "500000"].includes(qrAmountPreset) ? (
+                              <span className="flex items-center justify-center gap-0.5">
+                                Kustom <Check className="h-2.5 w-2.5" />
+                              </span>
+                            ) : (
+                              "Kustom..."
+                            )}
                           </button>
                         </div>
                       </div>
@@ -2441,7 +2669,7 @@ export default function App() {
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-slate-800 text-xs font-sans tracking-tight flex items-center gap-2">
                           <Clock className="h-4 w-4 text-amber-600 shrink-0" />
-                          <span>Linimasa Milestones Proyek</span>
+                          <span>Linimasa Tahapan Proyek</span>
                         </h3>
                         <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-mono uppercase font-bold">
                           {milestones.filter(m => m.status === 'COMPLETED').length}/{milestones.length} Selesai
@@ -2470,8 +2698,14 @@ export default function App() {
                               return (
                                 <div key={ms.id} className="relative pl-5">
                                   {/* Milestone dot connector */}
-                                  <span className={`absolute -left-2.5 top-0.5 w-5 h-5 rounded-full flex items-center justify-center border font-mono text-[8px] font-bold ${dotClass}`}>
-                                    {isCompleted ? "✓" : isOngoing ? "➔" : "•"}
+                                  <span className={`absolute -left-2.5 top-0.5 w-5 h-5 rounded-full flex items-center justify-center border font-mono ${dotClass}`}>
+                                    {isCompleted ? (
+                                      <Check className="h-2.5 w-2.5 text-white" />
+                                    ) : isOngoing ? (
+                                      <ArrowRight className="h-2.5 w-2.5 text-white animate-pulse" />
+                                    ) : (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                    )}
                                   </span>
 
                                   <div className="space-y-1">
@@ -2534,7 +2768,7 @@ export default function App() {
                             <div key={log.id} className={`border-l-2 pl-3 py-1 ${index === 0 ? 'border-emerald-500/30' : 'border-slate-700'}`}>
                               <p className="text-[10px] text-emerald-400 font-mono">#{log.id.substring(0, 5).toUpperCase()} - {log.action}</p>
                               <p className="text-xs text-slate-300 leading-tight pr-1">{log.details}</p>
-                              <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-widest">{new Date(log.timestamp).toLocaleTimeString()}</p>
+                              <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-widest">{new Date(log.timestamp).toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' })} WIB</p>
                             </div>
                           ))}
                         </div>
@@ -2619,7 +2853,7 @@ export default function App() {
                         className="bg-emerald-950 hover:bg-emerald-900 border border-emerald-850 text-white px-3 py-1.5 rounded-lg text-xxs font-bold transition flex items-center gap-1 cursor-pointer"
                       >
                         <LogOut className="h-3 w-3" />
-                        <span>Kunci Sesi / Logout</span>
+                        <span>Logout / Keluar</span>
                       </button>
                     </div>
 
@@ -2936,7 +3170,7 @@ export default function App() {
                         className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1.5 cursor-pointer self-start sm:self-center"
                       >
                         <LogOut className="h-3.5 w-3.5 text-rose-500" />
-                        <span>Kunci Sesi / Logout</span>
+                        <span>Logout / Keluar</span>
                       </button>
                     </div>
 
@@ -3001,7 +3235,7 @@ export default function App() {
                     {/* MANAJEMEN MILESTONES SECTION */}
                     <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-xs space-y-6">
                       <div>
-                        <h3 className="font-bold text-slate-800 text-xs mb-1">Manajemen Milestones & Sasaran Proyek</h3>
+                        <h3 className="font-bold text-slate-800 text-xs mb-1">Manajemen Tahapan & Sasaran Proyek</h3>
                         <p className="text-[10px] text-slate-400 leading-normal">Atur tenggat sasaran strategis konstruksi fisik proyek dan perbarui status pengerjaan secara real-time.</p>
                       </div>
 
@@ -3011,7 +3245,7 @@ export default function App() {
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-slate-505 mb-1 font-semibold">Nama Sasaran / Milestone *</label>
+                            <label className="block text-slate-505 mb-1 font-semibold">Nama Sasaran / Tahapan Proyek *</label>
                             <input 
                               type="text"
                               placeholder="Contoh: Pemasangan Kusen & Daun Jendela"
@@ -3094,39 +3328,122 @@ export default function App() {
                           {milestones.length > 0 ? (
                             [...milestones]
                               .sort((a, b) => new Date(a.expectedDate).getTime() - new Date(b.expectedDate).getTime())
-                              .map((ms) => (
-                                <div key={ms.id} className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-2 text-xxs">
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-bold text-slate-800 text-xs">{ms.title}</span>
-                                      <span className="text-[8px] bg-slate-200/80 text-slate-600 px-1.5 py-0.5 rounded font-mono uppercase font-bold">{translateCategory(ms.category)}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      <span className="text-[9px] font-mono text-slate-500 font-bold bg-slate-150/50 border border-slate-200 px-1.5 py-0.2 rounded">{ms.expectedDate}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteMilestone(ms.id)}
-                                        className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded transition shrink-0"
-                                        title="Hapus Milestone"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
+                              .map((ms) => {
+                                const isCompleted = ms.status === 'COMPLETED';
+                                const isOngoing = ms.status === 'ON_GOING';
+                                const isPending = ms.status === 'PENDING';
 
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                                    <div>
-                                      <label className="block text-[8px] text-slate-400 font-bold uppercase mb-1">Status Pekerjaan</label>
-                                      <select
-                                        value={ms.status}
-                                        onChange={(e: any) => handleUpdateMilestoneStatus(ms.id, e.target.value, ms.progressNotes, ms.title, ms.expectedDate, ms.category)}
-                                        className="w-full bg-white px-2 py-1 border border-slate-200 rounded-md text-[10px] text-slate-800 font-semibold"
-                                      >
-                                        <option value="PENDING">Rencana / Pending</option>
-                                        <option value="ON_GOING">Sedang Berlangsung (On Going)</option>
-                                        <option value="COMPLETED">Selesai (Completed)</option>
-                                      </select>
+                                return (
+                                  <div 
+                                    key={ms.id} 
+                                    className={`p-3 rounded-xl space-y-2 text-xxs border transition-all duration-300 ${
+                                      isCompleted
+                                        ? 'bg-cyan-50/20 border-cyan-200 border-l-4 border-l-cyan-500 shadow-2xs'
+                                        : isOngoing
+                                        ? 'bg-fuchsia-50/20 border-fuchsia-200 border-l-4 border-l-fuchsia-500 shadow-2xs'
+                                        : 'bg-yellow-50/20 border-yellow-250 border-l-4 border-l-yellow-500 shadow-2xs'
+                                    }`}
+                                  >
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-bold text-slate-800 text-xs">{ms.title}</span>
+                                        <span className="text-[8px] bg-slate-200/80 text-slate-600 px-1.5 py-0.5 rounded font-mono uppercase font-bold">{translateCategory(ms.category)}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[9px] font-mono text-slate-500 font-bold bg-slate-150/50 border border-slate-200 px-1.5 py-0.2 rounded">{ms.expectedDate}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteMilestone(ms.id)}
+                                          className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded transition shrink-0"
+                                          title="Hapus Milestone"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
                                     </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                                      <div>
+                                        <label className="block text-[8px] text-slate-400 font-bold uppercase mb-1.5">Status Pekerjaan</label>
+                                        
+                                        <div className="relative flex items-start justify-between w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                                          {/* Horizontal connected pipeline track */}
+                                          <div className="absolute left-8 right-8 top-[19px] -translate-y-1/2 h-1 bg-slate-100 rounded-full pointer-events-none">
+                                            <div 
+                                              className={`h-full transition-all duration-300 rounded-full ${
+                                                isCompleted 
+                                                  ? 'bg-cyan-500' 
+                                                  : isOngoing 
+                                                  ? 'bg-fuchsia-500' 
+                                                  : 'bg-yellow-500'
+                                              }`}
+                                              style={{
+                                                width: isCompleted ? '100%' : isOngoing ? '50%' : '0%'
+                                              }}
+                                            />
+                                          </div>
+
+                                          {/* Option: PENDING */}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdateMilestoneStatus(ms.id, 'PENDING', ms.progressNotes, ms.title, ms.expectedDate, ms.category)}
+                                            className="relative z-10 flex flex-col items-center group cursor-pointer focus:outline-hidden"
+                                          >
+                                            <div 
+                                              className={`w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 transition-all duration-200 ${
+                                                isPending
+                                                  ? 'bg-yellow-50 border-yellow-500 ring-4 ring-yellow-100/70'
+                                                  : 'bg-white border-slate-300 group-hover:border-slate-500'
+                                              }`}
+                                            >
+                                              <div className={`w-2 h-2 rounded-full transition-all duration-200 ${isPending ? 'bg-yellow-500' : 'bg-transparent'}`} />
+                                            </div>
+                                            <span className={`text-[8px] font-bold uppercase mt-1 tracking-wider ${isPending ? 'text-yellow-600' : 'text-slate-400 group-hover:text-slate-650'}`}>
+                                              Rencana
+                                            </span>
+                                          </button>
+
+                                          {/* Option: ON_GOING */}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdateMilestoneStatus(ms.id, 'ON_GOING', ms.progressNotes, ms.title, ms.expectedDate, ms.category)}
+                                            className="relative z-10 flex flex-col items-center group cursor-pointer focus:outline-hidden"
+                                          >
+                                            <div 
+                                              className={`w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 transition-all duration-200 ${
+                                                isOngoing
+                                                  ? 'bg-fuchsia-50 border-fuchsia-500 ring-4 ring-fuchsia-100/70'
+                                                  : 'bg-white border-slate-300 group-hover:border-slate-500'
+                                              }`}
+                                            >
+                                              <div className={`w-2 h-2 rounded-full transition-all duration-200 ${isOngoing ? 'bg-fuchsia-500' : 'bg-transparent'}`} />
+                                            </div>
+                                            <span className={`text-[8px] font-bold uppercase mt-1 tracking-wider ${isOngoing ? 'text-fuchsia-600' : 'text-slate-400 group-hover:text-slate-650'}`}>
+                                              Progres
+                                            </span>
+                                          </button>
+
+                                          {/* Option: COMPLETED */}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdateMilestoneStatus(ms.id, 'COMPLETED', ms.progressNotes, ms.title, ms.expectedDate, ms.category)}
+                                            className="relative z-10 flex flex-col items-center group cursor-pointer focus:outline-hidden"
+                                          >
+                                            <div 
+                                              className={`w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 transition-all duration-200 ${
+                                                isCompleted
+                                                  ? 'bg-cyan-50 border-cyan-500 ring-4 ring-cyan-100/70'
+                                                  : 'bg-white border-slate-300 group-hover:border-slate-500'
+                                              }`}
+                                            >
+                                              <div className={`w-2 h-2 rounded-full transition-all duration-200 ${isCompleted ? 'bg-cyan-500' : 'bg-transparent'}`} />
+                                            </div>
+                                            <span className={`text-[8px] font-bold uppercase mt-1 tracking-wider ${isCompleted ? 'text-cyan-600' : 'text-slate-400 group-hover:text-slate-650'}`}>
+                                              Selesai
+                                            </span>
+                                          </button>
+                                        </div>
+                                      </div>
 
                                     <div>
                                       <label className="block text-[8px] text-slate-400 font-bold uppercase mb-1">Catatan Progres</label>
@@ -3147,7 +3464,8 @@ export default function App() {
                                     </div>
                                   </div>
                                 </div>
-                              ))
+                              );
+                            })
                           ) : (
                             <div className="text-center text-slate-400 text-xxs py-4 italic bg-slate-50 border border-dashed border-slate-200 rounded-xl">
                               Belum ada rincian milestones yang terdaftar dalam proyek ini.
@@ -3170,8 +3488,9 @@ export default function App() {
                   <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
-                      <span className="text-[10px] font-mono font-extrabold text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md uppercase tracking-wider">
-                        👑 KONSOL SUPER ADMINISTRATOR
+                      <span className="text-[10px] font-mono font-extrabold text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md uppercase tracking-wider flex items-center gap-1.5 w-max">
+                        <Crown className="h-3 w-3 text-amber-500 shrink-0" />
+                        KONSOL SUPER ADMINISTRATOR
                       </span>
                       <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-2 flex items-center gap-2">
                         <Cog className="h-6 w-6 text-amber-500 animate-spin-slow" />
@@ -3773,8 +4092,18 @@ export default function App() {
                     <div className="lg:col-span-5 space-y-5">
                       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
                         <div className="border-b border-slate-200 pb-2">
-                          <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
-                            {editingBankAccountId ? "✍️ Edit Rekening Terpilih" : "➕ Daftarkan Rekening Baru"}
+                          <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-sans flex items-center gap-1.5">
+                            {editingBankAccountId ? (
+                              <>
+                                <ArrowRight className="h-3 w-3 text-blue-500 shrink-0" />
+                                <span>Edit Rekening Terpilih</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                <span>Daftarkan Rekening Baru</span>
+                              </>
+                            )}
                           </h5>
                           <p className="text-[10px] text-slate-400">Lengkapi formulir identifikasi rekening.</p>
                         </div>
@@ -4182,14 +4511,16 @@ export default function App() {
                             <p className="opacity-95 text-[10px]">
                               Mengaktifkan fitur ini berarti Anda akan <strong>MENGHAPUS PERMANEN</strong> seluruh donasi publik, rancangan anggaran biaya (RAB) serta realisasi belanja operasional instansi milik <strong>semua proyek-proyek terdahulu</strong> di database global. 
                             </p>
-                            <p className="text-[9.5px] font-bold border-t border-red-500 pt-1.5 mt-1 bg-red-700/40 p-1.5 rounded text-amber-100">
-                              💡 REKOMENDASI PARALEL: Kosongkan centang ini jika Anda ingin proyek baru ini berjalan berdampingan tanpa menghapus data sejarah keuangan dari proyek lama!
+                            <p className="text-[9.5px] font-bold border-t border-red-500 pt-1.5 mt-1 bg-red-700/40 p-1.5 rounded text-amber-100 flex items-center gap-1.5">
+                              <Lightbulb className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+                              <span>REKOMENDASI PARALEL: Kosongkan centang ini jika Anda ingin proyek baru ini berjalan berdampingan tanpa menghapus data sejarah keuangan dari proyek lama!</span>
                             </p>
 
                             {/* Text typing verification for safety */}
                             <div className="mt-3 p-3 bg-red-950/40 rounded-lg border border-red-500/20 space-y-2 text-white">
-                              <label className="block text-[9.5px] font-extrabold uppercase text-amber-300">
-                                🛑 TULIS FRASA KONFIRMASI PEMPROSESAN:
+                              <label className="block text-[9.5px] font-extrabold uppercase text-amber-300 flex items-center gap-1.5">
+                                <AlertTriangle className="h-3 w-3 text-amber-300 shrink-0" />
+                                <span>TULIS FRASA KONFIRMASI PEMPROSESAN:</span>
                               </label>
                               <p className="text-[9.5px] text-red-100 leading-relaxed opacity-90">
                                 Untuk membuka kunci pengoperasian instruksi hapus ini, silakan ketik kata kunci <strong className="text-amber-300 font-mono select-all bg-red-900/50 px-1 py-0.5 rounded">STERILKAN DATABASE</strong> di bawah ini:
@@ -4203,12 +4534,12 @@ export default function App() {
                               />
                               {startFreshConfirmText === "STERILKAN DATABASE" ? (
                                 <p className="text-[9px] text-emerald-350 font-bold flex items-center space-x-1">
-                                  <span className="text-emerald-400">✓</span>
+                                  <Check className="h-3 w-3 text-emerald-400 shrink-0" />
                                   <span>Kata kunci cocok. Kunci pengaman dibuka.</span>
                                 </p>
                               ) : startFreshConfirmText.length > 0 ? (
                                 <p className="text-[9px] text-amber-300 font-semibold flex items-center space-x-1 animate-pulse">
-                                  <span>⚠</span>
+                                  <AlertCircle className="h-3 w-3 text-amber-300 shrink-0" />
                                   <span>Kata kunci belum sesuai...</span>
                                 </p>
                               ) : null}
@@ -4222,14 +4553,16 @@ export default function App() {
 
                   {/* Error / Success Feedback */}
                   {formError && (
-                    <div className="bg-red-55 p-3 rounded-lg text-red-750 text-xs font-semibold border border-red-200">
-                      ⚠️ {formError}
+                    <div className="bg-red-55 p-3 rounded-lg text-red-750 text-xs font-semibold border border-red-200 flex items-center gap-1.5">
+                      <AlertCircle className="h-4 w-4 text-red-700 shrink-0" />
+                      <span>{formError}</span>
                     </div>
                   )}
 
                   {formSuccess && (
-                    <div className="bg-emerald-50 border border-emerald-250 text-emerald-800 px-4 py-3 rounded-lg text-xs font-medium">
-                      ✅ {formSuccess}
+                    <div className="bg-emerald-50 border border-emerald-250 text-emerald-800 px-4 py-3 rounded-lg text-xs font-medium flex items-center gap-1.5">
+                      <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>{formSuccess}</span>
                     </div>
                   )}
 
@@ -4353,8 +4686,9 @@ export default function App() {
                 />
               </div>
 
-              <div className="bg-emerald-50 p-2.5 rounded-lg border border-emerald-100 text-xxs font-mono text-emerald-800 text-center">
-                🔒 CERTIFICATE STATUS: VERIFIED LEDGER ATTACHMENT
+              <div className="bg-emerald-50 p-2.5 rounded-lg border border-emerald-100 text-xxs font-mono text-emerald-800 flex items-center justify-center gap-1.5 font-bold">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-650 shrink-0" />
+                <span>STATUS VERIFIKASI: BUKTI TRANSAKSI DI BUKU KAS VALID & SAH</span>
               </div>
             </motion.div>
           </motion.div>
@@ -4393,7 +4727,7 @@ export default function App() {
 
               {loginErrorState && (
                 <div className="bg-red-50 text-red-700 text-xxs p-3 rounded-lg border border-red-100 flex items-start space-x-1.5 font-sans">
-                  <span>⚠️</span>
+                  <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
                   <span>{loginErrorState}</span>
                 </div>
               )}
@@ -4481,7 +4815,7 @@ export default function App() {
               {/* Success / Error Banners */}
               {publicGatewaySuccess && (
                 <div className="bg-emerald-50 text-emerald-800 text-xs p-4 rounded-xl border border-emerald-150 flex items-start space-x-2 animate-fade-in">
-                  <span className="text-sm">✓</span>
+                  <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p className="font-bold">Konfirmasi Diterima!</p>
                     <p className="text-[11px] leading-relaxed">{publicGatewaySuccess}</p>
@@ -4491,7 +4825,9 @@ export default function App() {
 
               {publicGatewayError && (
                 <div className="bg-rose-50 text-rose-700 text-xs p-4 rounded-xl border border-rose-150 flex items-start space-x-2 animate-fade-in">
-                  <span className="text-sm">⚠️</span>
+                  <span className="text-sm">
+                    <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                  </span>
                   <div className="space-y-1">
                     <p className="font-bold">Verifikasi Gagal</p>
                     <p className="text-[11px] leading-relaxed">{publicGatewayError}</p>
@@ -4766,8 +5102,9 @@ export default function App() {
                     <li>Rincian transaksi kas masuk & keluar terdahulu</li>
                     <li>Rencana Anggaran Biaya (RAB) dari seluruh proyek-proyek di database</li>
                   </ul>
-                  <p className="text-[10.5px] font-bold text-red-700 bg-red-100/50 p-2 rounded">
-                    ⚠️ data yang tertulis di server global saat ini akan lenyap selamanya dan tidak dapat dikembalikan dengan cara apapun.
+                  <p className="text-[10.5px] font-bold text-red-700 bg-red-100/50 p-2 rounded flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4 text-red-700 shrink-0" />
+                    <span>data yang tertulis di server global saat ini akan lenyap selamanya dan tidak dapat dikembalikan dengan cara apapun.</span>
                   </p>
                 </div>
               </div>

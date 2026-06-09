@@ -3095,12 +3095,12 @@ app.get("/api/system-info", (req, res) => {
     const packageJsonPath = path.join(process.cwd(), "package.json");
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
     res.json({
-      version: packageJson.version || "1.2.8",
+      version: packageJson.version || "2.0.0",
       year: new Date().getFullYear()
     });
   } catch (err) {
     res.json({
-      version: "1.2.8",
+      version: "2.0.0",
       year: new Date().getFullYear()
     });
   }
