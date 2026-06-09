@@ -1035,8 +1035,8 @@ export default function GoogleDriveSheetsSync({
                   <p className="text-slate-400 text-xs font-mono">Belum ada slip fisik atau PDF laporan yang disimpan di folder Drive.</p>
                 </div>
               ) : (
-                <div className="border border-slate-100 rounded-2xl overflow-hidden bg-white max-h-[300px] overflow-y-auto">
-                  <table className="w-full text-left">
+                <div className="border border-slate-100 rounded-2xl overflow-hidden bg-white max-h-[300px] overflow-y-auto overflow-x-auto scrollbar-thin">
+                  <table className="w-full text-left min-w-[480px]">
                     <thead className="bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
                       <tr>
                         <th className="px-4 py-3">Nama Berkas</th>

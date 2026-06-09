@@ -612,12 +612,21 @@ async function ensurePostgresBudgets() {
   const prisma = await getPrismaClient();
   if (!prisma) return;
   try {
-    const count = await prisma.budget.count();
+    const activeProjectId = await getActiveProjectId();
+    const count = await prisma.budget.count({
+      where: {
+        OR: [
+          { projectId: activeProjectId },
+          activeProjectId === "project-default" ? { projectId: null } : {}
+        ]
+      }
+    });
     if (count === 0) {
       const data = defaultRABBudgets.map(b => ({
         itemName: b.itemName,
         category: b.category,
-        targetAmount: b.targetAmount
+        targetAmount: b.targetAmount,
+        projectId: activeProjectId
       }));
       await prisma.budget.createMany({ data });
     }
@@ -713,12 +722,33 @@ async function createUser(userData: any) {
   return userData;
 }
 
-async function getDonations() {
+async function getActiveProjectId(): Promise<string> {
+  const config = await getProjectConfigFromDb();
+  return config?.id || "project-default";
+}
+
+async function getTargetProjectId(req: any): Promise<string> {
+  const db = getDBState();
+  const visibilityMode = db.visibilityMode || "single";
+  if (visibilityMode === "multiple" && req && req.query && req.query.projectId && req.query.projectId !== "undefined") {
+    return String(req.query.projectId);
+  }
+  return await getActiveProjectId();
+}
+
+async function getDonations(targetProjectId?: string) {
   if (!(await hasActiveProject())) return [];
+  const activeProjectId = targetProjectId || await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const donations = await prisma.donation.findMany({
+        where: {
+          OR: [
+            { projectId: activeProjectId },
+            activeProjectId === "project-default" ? { projectId: null } : {}
+          ]
+        },
         orderBy: { createdAt: "desc" }
       });
       return donations.map(d => ({
@@ -735,10 +765,14 @@ async function getDonations() {
       console.error("Prisma getDonations failed, falling back", err);
     }
   }
-  return getDBState().donations;
+  return (getDBState().donations || []).filter((d: any) => {
+    const pid = d.projectId || "project-default";
+    return pid === activeProjectId;
+  });
 }
 
 async function addDonation(donationData: any) {
+  const activeProjectId = await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -750,7 +784,8 @@ async function addDonation(donationData: any) {
           paymentMethod: mapToPrismaPaymentMethod(donationData.paymentMethod),
           transferProofUrl: donationData.transferProofUrl,
           status: donationData.status,
-          date: new Date(donationData.date)
+          date: new Date(donationData.date),
+          projectId: activeProjectId
         }
       });
       return {
@@ -768,9 +803,10 @@ async function addDonation(donationData: any) {
     }
   }
   const db = getDBState();
-  db.donations.unshift(donationData);
+  const donationWithProj = { ...donationData, projectId: activeProjectId };
+  db.donations.unshift(donationWithProj);
   saveDBState(db);
-  return donationData;
+  return donationWithProj;
 }
 
 async function approveDonationInDb(id: string) {
@@ -808,12 +844,19 @@ async function approveDonationInDb(id: string) {
   return null;
 }
 
-async function getExpenditures() {
+async function getExpenditures(targetProjectId?: string) {
   if (!(await hasActiveProject())) return [];
+  const activeProjectId = targetProjectId || await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const expenditures = await prisma.expenditure.findMany({
+        where: {
+          OR: [
+            { projectId: activeProjectId },
+            activeProjectId === "project-default" ? { projectId: null } : {}
+          ]
+        },
         orderBy: { date: "desc" }
       });
       return expenditures.map(e => ({
@@ -833,10 +876,14 @@ async function getExpenditures() {
       console.error("Prisma getExpenditures failed, falling back", err);
     }
   }
-  return getDBState().expenditures;
+  return (getDBState().expenditures || []).filter((e: any) => {
+    const pid = e.projectId || "project-default";
+    return pid === activeProjectId;
+  });
 }
 
 async function addExpenditure(expData: any) {
+  const activeProjectId = await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -851,7 +898,8 @@ async function addExpenditure(expData: any) {
           storeName: expData.storeName,
           receiptUrl: expData.receiptUrl,
           inputtedBy: expData.inputtedBy,
-          date: new Date(expData.date)
+          date: new Date(expData.date),
+          projectId: activeProjectId
         }
       });
       return {
@@ -872,26 +920,44 @@ async function addExpenditure(expData: any) {
     }
   }
   const db = getDBState();
-  db.expenditures.unshift(expData);
+  const expWithProj = { ...expData, projectId: activeProjectId };
+  db.expenditures.unshift(expWithProj);
   const matchedBudgetIndex = db.budgets.findIndex((b: RABItem) => 
-    b.category.toLowerCase().startsWith(expData.category.toLowerCase().substring(0,4)) ||
-    b.itemName.toLowerCase().includes(expData.itemName.toLowerCase())
+    ((b as any).projectId || "project-default") === activeProjectId && (
+      b.category.toLowerCase().startsWith(expData.category.toLowerCase().substring(0,4)) ||
+      b.itemName.toLowerCase().includes(expData.itemName.toLowerCase())
+    )
   );
   if (matchedBudgetIndex !== -1) {
     db.budgets[matchedBudgetIndex].spentAmount += expData.totalPrice;
   }
   saveDBState(db);
-  return expData;
+  return expWithProj;
 }
 
-async function getBudgets() {
+async function getBudgets(targetProjectId?: string) {
   if (!(await hasActiveProject())) return [];
+  const activeProjectId = targetProjectId || await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
       await ensurePostgresBudgets();
-      const budgets = await prisma.budget.findMany();
-      const expenditures = await prisma.expenditure.findMany();
+      const budgets = await prisma.budget.findMany({
+        where: {
+          OR: [
+            { projectId: activeProjectId },
+            activeProjectId === "project-default" ? { projectId: null } : {}
+          ]
+        }
+      });
+      const expenditures = await prisma.expenditure.findMany({
+        where: {
+          OR: [
+            { projectId: activeProjectId },
+            activeProjectId === "project-default" ? { projectId: null } : {}
+          ]
+        }
+      });
 
       return budgets.map(b => {
         const spent = expenditures
@@ -910,15 +976,25 @@ async function getBudgets() {
       console.error("Prisma getBudgets failed, falling back", err);
     }
   }
-  return getDBState().budgets;
+  return (getDBState().budgets || []).filter((b: any) => {
+    const pid = b.projectId || "project-default";
+    return pid === activeProjectId;
+  });
 }
 
-async function getProgress() {
+async function getProgress(targetProjectId?: string) {
   if (!(await hasActiveProject())) return [];
+  const activeProjectId = targetProjectId || await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const progress = await prisma.physicalProgress.findMany({
+        where: {
+          OR: [
+            { projectId: activeProjectId },
+            activeProjectId === "project-default" ? { projectId: null } : {}
+          ]
+        },
         orderBy: { timelineDate: "asc" }
       });
       return progress.map(p => ({
@@ -932,10 +1008,14 @@ async function getProgress() {
       console.error("Prisma getProgress failed, falling back", err);
     }
   }
-  return getDBState().progress;
+  return (getDBState().progress || []).filter((p: any) => {
+    const pid = p.projectId || "project-default";
+    return pid === activeProjectId;
+  });
 }
 
 async function addProgress(progressData: any) {
+  const activeProjectId = await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -944,7 +1024,8 @@ async function addProgress(progressData: any) {
           percentage: progressData.percentage,
           description: progressData.description,
           photoUrls: progressData.photoUrls,
-          timelineDate: new Date(progressData.timelineDate)
+          timelineDate: new Date(progressData.timelineDate),
+          projectId: activeProjectId
         }
       });
       return {
@@ -959,17 +1040,25 @@ async function addProgress(progressData: any) {
     }
   }
   const db = getDBState();
-  db.progress.push(progressData);
+  const progWithProj = { ...progressData, projectId: activeProjectId };
+  db.progress.push(progWithProj);
   saveDBState(db);
-  return progressData;
+  return progWithProj;
 }
 
-async function getAuditLogs() {
+async function getAuditLogs(targetProjectId?: string) {
   if (!(await hasActiveProject())) return [];
+  const activeProjectId = targetProjectId || await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
       const logs = await prisma.auditLog.findMany({
+        where: {
+          OR: [
+            { projectId: activeProjectId },
+            activeProjectId === "project-default" ? { projectId: null } : {}
+          ]
+        },
         orderBy: { timestamp: "desc" }
       });
       return logs.map(l => ({
@@ -985,10 +1074,14 @@ async function getAuditLogs() {
       console.error("Prisma getAuditLogs failed, falling back", err);
     }
   }
-  return getDBState().auditLogs;
+  return (getDBState().auditLogs || []).filter((l: any) => {
+    const pid = l.projectId || "project-default";
+    return pid === activeProjectId;
+  });
 }
 
 async function addAuditLog(logData: any) {
+  const activeProjectId = await getActiveProjectId();
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
@@ -999,7 +1092,8 @@ async function addAuditLog(logData: any) {
           recordId: logData.recordId,
           changedBy: logData.changedBy,
           details: logData.details,
-          timestamp: new Date(logData.timestamp)
+          timestamp: new Date(logData.timestamp),
+          projectId: activeProjectId
         }
       });
       return;
@@ -1008,20 +1102,135 @@ async function addAuditLog(logData: any) {
     }
   }
   const db = getDBState();
-  db.auditLogs.unshift(logData);
+  const logWithProj = { ...logData, projectId: activeProjectId };
+  db.auditLogs.unshift(logWithProj);
   saveDBState(db);
 }
 
-async function getProjectConfigFromDb() {
+async function healDatabaseOrphanedProjects() {
+  const activeProjectId = await getActiveProjectId();
+  if (!activeProjectId || activeProjectId === "project-default") {
+    return;
+  }
+
+  // Fallback memory state healing
+  const db = getDBState();
+  let dbChanged = false;
+  if (db.donations) {
+    db.donations.forEach((d: any) => {
+      if (!d.projectId || d.projectId === "project-default") {
+        d.projectId = activeProjectId;
+        dbChanged = true;
+      }
+    });
+  }
+  if (db.expenditures) {
+    db.expenditures.forEach((e: any) => {
+      if (!e.projectId || e.projectId === "project-default") {
+        e.projectId = activeProjectId;
+        dbChanged = true;
+      }
+    });
+  }
+  if (db.progress) {
+    db.progress.forEach((p: any) => {
+      if (!p.projectId || p.projectId === "project-default") {
+        p.projectId = activeProjectId;
+        dbChanged = true;
+      }
+    });
+  }
+  if (db.auditLogs) {
+    db.auditLogs.forEach((l: any) => {
+      if (!l.projectId || l.projectId === "project-default") {
+        l.projectId = activeProjectId;
+        dbChanged = true;
+      }
+    });
+  }
+  if (db.milestones) {
+    db.milestones.forEach((m: any) => {
+      if (!m.projectId || m.projectId === "project-default") {
+        m.projectId = activeProjectId;
+        dbChanged = true;
+      }
+    });
+  }
+  if (dbChanged) {
+    saveDBState(db);
+  }
+
+  // Postgres database self-healing
+  const prisma = await getPrismaClient();
+  if (prisma) {
+    try {
+      // Migrate Donations
+      await prisma.donation.updateMany({
+        where: {
+          OR: [
+            { projectId: "project-default" },
+            { projectId: null }
+          ]
+        },
+        data: {
+          projectId: activeProjectId
+        }
+      });
+
+      // Migrate Expenditures
+      await prisma.expenditure.updateMany({
+        where: {
+          OR: [
+            { projectId: "project-default" },
+            { projectId: null }
+          ]
+        },
+        data: {
+          projectId: activeProjectId
+        }
+      });
+
+      // Migrate PhysicalProgress
+      await prisma.physicalProgress.updateMany({
+        where: {
+          OR: [
+            { projectId: "project-default" },
+            { projectId: null }
+          ]
+        },
+        data: {
+          projectId: activeProjectId
+        }
+      });
+
+      // Migrate AuditLogs
+      await prisma.auditLog.updateMany({
+        where: {
+          OR: [
+            { projectId: "project-default" },
+            { projectId: null }
+          ]
+        },
+        data: {
+          projectId: activeProjectId
+        }
+      });
+    } catch (err) {
+      console.error("[HealDB] Error running dynamic db self-healing migration:", err);
+    }
+  }
+}
+
+async function getProjectConfigFromDb(targetProjectId?: string) {
   if (!(await hasActiveProject())) {
     return { initialized: false, name: "", budget: 0, description: "", projectStatus: "belum_mulai" };
   }
   const prisma = await getPrismaClient();
   if (prisma) {
     try {
-      const config = await prisma.projectConfig.findFirst({
-        orderBy: { updatedAt: "desc" }
-      });
+      const config = targetProjectId 
+        ? await prisma.projectConfig.findUnique({ where: { id: targetProjectId } }).catch(() => null) || await prisma.project.findUnique({ where: { id: targetProjectId } }).catch(() => null)
+        : await prisma.projectConfig.findFirst({ orderBy: { updatedAt: "desc" } });
       if (config) {
         return {
           id: config.id,
@@ -1032,50 +1241,24 @@ async function getProjectConfigFromDb() {
           projectStatus: config.projectStatus,
           budget: Number(config.budget),
           description: config.description,
-          initialized: config.initialized,
-          initializedAt: config.initializedAt.toISOString(),
-          initializedBy: config.initializedBy
+          initialized: true,
+          initializedAt: (config as any).initializedAt ? (config as any).initializedAt.toISOString() : new Date().toISOString(),
+          initializedBy: (config as any).initializedBy || "Super Admin"
         };
-      } else {
-        // Seed database table from json state if empty
-        const db = getDBState();
-        if (db.projectConfig) {
-          const budgetVal = Number(db.projectConfig.budget || 0);
-          const seeded = await prisma.projectConfig.create({
-            data: {
-              id: db.projectConfig.id || "project-default",
-              name: db.projectConfig.name || "Proyek Utama Pembangunan Masjid At-Taqwa",
-              type: db.projectConfig.type || "renovasi",
-              fundingSource: db.projectConfig.fundingSource || "donasi",
-              status: db.projectConfig.status || "public",
-              projectStatus: db.projectConfig.projectStatus || db.projectConfig.status || "berjalan",
-              budget: budgetVal,
-              description: db.projectConfig.description || "Ekspansi...",
-              initialized: db.projectConfig.initialized !== false,
-              initializedAt: db.projectConfig.initializedAt ? new Date(db.projectConfig.initializedAt) : new Date(),
-              initializedBy: db.projectConfig.initializedBy || "Super Admin"
-            }
-          });
-          return {
-            id: seeded.id,
-            name: seeded.name,
-            type: seeded.type,
-            fundingSource: seeded.fundingSource,
-            status: seeded.status,
-            projectStatus: seeded.projectStatus,
-            budget: Number(seeded.budget),
-            description: seeded.description,
-            initialized: seeded.initialized,
-            initializedAt: seeded.initializedAt.toISOString(),
-            initializedBy: seeded.initializedBy
-          };
-        }
       }
     } catch (err) {
       console.error("Prisma getProjectConfigFromDb failed, falling back", err);
     }
   }
-  return getDBState().projectConfig;
+  
+  const db = getDBState();
+  if (targetProjectId) {
+    const found = (db.projects || []).find((p: any) => p.id === targetProjectId);
+    if (found) {
+      return { ...found, initialized: true };
+    }
+  }
+  return db.projectConfig;
 }
 
 async function getProjectsFromDb() {
@@ -1668,6 +1851,377 @@ app.delete("/api/projects/:id", authenticateToken, requireRole(["ADMIN"]), async
   res.json({ success: true, message: "Proyek berhasil dihapus.", projectConfig: finalConfig });
 });
 
+// POST ACTIVATE project by admin
+app.post("/api/projects/:id/activate", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  const { id } = req.params;
+  const db = getDBState();
+  
+  try {
+    let targetProject: any = null;
+    const prisma = await getPrismaClient();
+    
+    if (prisma) {
+      targetProject = await prisma.project.findUnique({
+        where: { id }
+      });
+      if (!targetProject) {
+        return res.status(404).json({ error: "Proyek tidak ditemukan di dalam database Postgres." });
+      }
+      
+      // Update or create ProjectConfig in database
+      const currentConfig = await prisma.projectConfig.findFirst();
+      if (currentConfig) {
+        await prisma.projectConfig.update({
+          where: { id: currentConfig.id },
+          data: {
+            id: targetProject.id,
+            name: targetProject.name,
+            type: targetProject.type,
+            fundingSource: targetProject.fundingSource,
+            status: targetProject.status,
+            projectStatus: targetProject.projectStatus,
+            budget: targetProject.budget,
+            description: targetProject.description,
+            initialized: true,
+            initializedAt: targetProject.initializedAt,
+            initializedBy: targetProject.initializedBy || "Super Admin"
+          }
+        });
+      } else {
+        await prisma.projectConfig.create({
+          data: {
+            id: targetProject.id,
+            name: targetProject.name,
+            type: targetProject.type,
+            fundingSource: targetProject.fundingSource,
+            status: targetProject.status,
+            projectStatus: targetProject.projectStatus,
+            budget: targetProject.budget,
+            description: targetProject.description,
+            initialized: true,
+            initializedAt: targetProject.initializedAt,
+            initializedBy: targetProject.initializedBy || "Super Admin"
+          }
+        });
+      }
+      
+      await prisma.auditLog.create({
+        data: {
+          action: "UPDATE",
+          tableName: "Budget",
+          recordId: id,
+          changedBy: req.user.name || req.user.email,
+          details: `Mengaktifkan proyek "${targetProject.name}" sebagai proyek aktif utama.`
+        }
+      });
+    }
+    
+    // Fallback memory state sync
+    if (db.projects) {
+      const projMem = db.projects.find((p: any) => p.id === id);
+      if (projMem) {
+        db.projectConfig = {
+          ...projMem,
+          initialized: true
+        };
+      } else if (!prisma) {
+        return res.status(404).json({ error: "Proyek tidak ditemukan dalam database." });
+      }
+    }
+    
+    // Memory audit log
+    const auditObj = {
+      id: "audit-activate-" + Date.now(),
+      timestamp: new Date().toISOString(),
+      action: "UPDATE" as any,
+      tableName: "Budget" as any,
+      recordId: id,
+      changedBy: req.user.name || req.user.email,
+      details: `Mengaktifkan proyek "${targetProject?.name || id}" sebagai proyek aktif utama.`
+    };
+    if (!db.auditLogs) db.auditLogs = [];
+    db.auditLogs.unshift(auditObj);
+    
+    saveDBState(db);
+    
+    const finalConfig = prisma ? await getProjectConfigFromDb() : db.projectConfig;
+    res.json({ success: true, message: "Proyek berhasil diaktifkan.", projectConfig: finalConfig });
+  } catch (err) {
+    console.error("Gagal mengaktifkan proyek:", err);
+    res.status(500).json({ error: "Gagal mengaktifkan proyek." });
+  }
+});
+
+// GET Visibility settings
+app.get("/api/visibility-settings", (req, res) => {
+  const db = getDBState();
+  res.json({
+    visibilityMode: db.visibilityMode || "single"
+  });
+});
+
+// POST Update Visibility settings (Admin only)
+app.post("/api/visibility-settings", authenticateToken, requireRole(["ADMIN"]), (req: any, res) => {
+  const { visibilityMode } = req.body;
+  if (visibilityMode !== "single" && visibilityMode !== "multiple") {
+    return res.status(400).json({ error: "Mode visibilitas tidak valid. Harus 'single' atau 'multiple'." });
+  }
+  const db = getDBState();
+  db.visibilityMode = visibilityMode;
+  saveDBState(db);
+  
+  // Also log audit
+  const auditSetting = {
+    id: "audit-setting-" + Date.now(),
+    timestamp: new Date().toISOString(),
+    action: "UPDATE" as any,
+    tableName: "Budget" as any,
+    recordId: "visibility-config",
+    changedBy: req.user.name || req.user.email,
+    details: `Mengubah mode visibilitas proyek menjadi: "${visibilityMode === "multiple" ? "Multiple Active Projects" : "Single Active Project"}"`
+  };
+  if (!db.auditLogs) db.auditLogs = [];
+  db.auditLogs.unshift(auditSetting);
+  saveDBState(db);
+
+  res.json({ success: true, message: `Mode visibilitas berhasil diubah ke ${visibilityMode}.` });
+});
+
+// GET Backups list (Admin only)
+app.get("/api/backups", authenticateToken, requireRole(["ADMIN"]), (req: any, res) => {
+  try {
+    const db = getDBState();
+    res.json(db.backups || []);
+  } catch (err) {
+    console.error("Get backups error:", err);
+    res.status(500).json({ error: "Failed to load backups" });
+  }
+});
+
+// POST Restore Backup (Admin only)
+app.post("/api/backups/:id/restore", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
+  const { id } = req.params;
+  const db = getDBState();
+  if (!db.backups) {
+    return res.status(400).json({ error: "Tidak ada backup yang tercatat." });
+  }
+  const backupItem = db.backups.find((b: any) => b.id === id);
+  if (!backupItem) {
+    return res.status(404).json({ error: "Titik restore tidak ditemukan." });
+  }
+  
+  const backupsDir = path.join(process.cwd(), "backups");
+  const filepath = path.join(backupsDir, backupItem.filename);
+  if (!fs.existsSync(filepath)) {
+    return res.status(404).json({ error: `File backup fisik '${backupItem.filename}' tidak ditemukan di server.` });
+  }
+  
+  try {
+    // Read the backup state
+    const backupContent = fs.readFileSync(filepath, "utf-8");
+    const restoredState = JSON.parse(backupContent);
+    
+    // Ensure the backups list is preserved so the admin doesn't lose other checkpoints!
+    restoredState.backups = db.backups;
+    restoredState.visibilityMode = db.visibilityMode || "single";
+    
+    // Save database state
+    saveDBState(restoredState);
+    
+    // Sync with Postgres (if Prisma is available)
+    const prisma = await getPrismaClient();
+    if (prisma) {
+      try {
+        // Drop current configurations in Postgres
+        await prisma.donation.deleteMany({});
+        await prisma.expenditure.deleteMany({});
+        await prisma.physicalProgress.deleteMany({});
+        await prisma.auditLog.deleteMany({});
+        await prisma.budget.deleteMany({});
+        await prisma.projectConfig.deleteMany({});
+        await prisma.project.deleteMany({});
+        await prisma.user.deleteMany({ where: { role: { in: ["TREASURER", "PROJECT_MANAGER"] } } });
+
+        if (restoredState.projectConfig && restoredState.projectConfig.id) {
+          await prisma.projectConfig.create({
+            data: {
+              id: restoredState.projectConfig.id,
+              name: restoredState.projectConfig.name,
+              type: restoredState.projectConfig.type,
+              fundingSource: restoredState.projectConfig.fundingSource,
+              status: restoredState.projectConfig.status,
+              projectStatus: restoredState.projectConfig.projectStatus || "berjalan",
+              budget: Number(restoredState.projectConfig.budget),
+              description: restoredState.projectConfig.description,
+              initialized: restoredState.projectConfig.initialized,
+              initializedAt: new Date(restoredState.projectConfig.initializedAt),
+              initializedBy: restoredState.projectConfig.initializedBy
+            }
+          });
+        }
+        
+        if (restoredState.projects) {
+          for (const proj of restoredState.projects) {
+            await prisma.project.create({
+              data: {
+                id: proj.id,
+                name: proj.name,
+                type: proj.type,
+                fundingSource: proj.fundingSource,
+                status: proj.status,
+                projectStatus: proj.projectStatus || "berjalan",
+                budget: Number(proj.budget),
+                description: proj.description,
+                initializedAt: new Date(proj.initializedAt),
+                initializedBy: proj.initializedBy
+              }
+            });
+          }
+        }
+
+        if (restoredState.budgets) {
+          await prisma.budget.createMany({
+            data: restoredState.budgets.map((b: any) => ({
+              id: b.id,
+              itemName: b.itemName,
+              category: b.category,
+              targetAmount: Number(b.targetAmount),
+              projectId: b.projectId || "project-default"
+            }))
+          });
+        }
+
+        if (restoredState.donations) {
+          await prisma.donation.createMany({
+            data: restoredState.donations.map((d: any) => ({
+              id: d.id,
+              donorName: d.donorName,
+              isAnonymous: d.isAnonymous,
+              amount: Number(d.amount),
+              date: new Date(d.date),
+              paymentMethod: (d.paymentMethod === "Bank Transfer" ? "BANK_TRANSFER" : d.paymentMethod === "E-Wallet" ? "E_WALLET" : d.paymentMethod === "Cash" ? "CASH" : "CRYPTO") as any,
+              transferProofUrl: d.transferProofUrl,
+              status: d.status as any
+            }))
+          });
+        }
+
+        if (restoredState.expenditures) {
+          await prisma.expenditure.createMany({
+            data: restoredState.expenditures.map((e: any) => ({
+              id: e.id,
+              itemName: e.itemName,
+              category: (e.category === "Material" ? "MATERIAL" : e.category === "Labor" ? "LABOR" : e.category === "Equipment" ? "EQUIPMENT" : e.category === "Permit/Admin" ? "PERMIT_ADMIN" : "OTHER") as any,
+              volume: Number(e.volume),
+              unit: e.unit,
+              unitPrice: Number(e.unitPrice),
+              totalPrice: Number(e.totalPrice),
+              storeName: e.storeName,
+              receiptUrl: e.receiptUrl,
+              inputtedBy: e.inputtedBy,
+              projectId: e.projectId || "project-default",
+              date: new Date(e.date)
+            }))
+          });
+        }
+
+        if (restoredState.progress) {
+          await prisma.physicalProgress.createMany({
+            data: restoredState.progress.map((p: any) => ({
+              id: p.id,
+              percentage: Number(p.percentage),
+              description: p.description,
+              timelineDate: new Date(p.timelineDate),
+              photoUrls: p.photoUrls || []
+            }))
+          });
+        }
+
+        if (restoredState.users) {
+          const nonAdmins = restoredState.users.filter((u: any) => u.role !== "ADMIN");
+          for (const u of nonAdmins) {
+            await prisma.user.create({
+              data: {
+                id: u.id,
+                email: u.email,
+                name: u.name,
+                role: u.role,
+                password: u.password
+              }
+            });
+          }
+        }
+      } catch (prismaErr) {
+        console.error("Gagal melakukan sync restore point ke Postgres:", prismaErr);
+      }
+    }
+    
+    const restoreAudit = {
+      id: "audit-restore-" + Date.now(),
+      timestamp: new Date().toISOString(),
+      action: "UPDATE" as any,
+      tableName: "Budget" as any,
+      recordId: id,
+      changedBy: req.user.name || req.user.email,
+      details: `Melakukan restore database kembali ke titik cadangan: "${backupItem.prevProjectName} -> ${backupItem.initializedProjectName}" (Dibuat: ${new Date(backupItem.timestamp).toLocaleString("id-ID")})`
+    };
+    
+    const updatedDb = getDBState();
+    if (!updatedDb.auditLogs) updatedDb.auditLogs = [];
+    updatedDb.auditLogs.unshift(restoreAudit);
+    saveDBState(updatedDb);
+
+    res.json({ success: true, message: `Database berhasil dikembalikan ke titik restore: ${backupItem.prevProjectName} -> ${backupItem.initializedProjectName}` });
+  } catch (err) {
+    console.error("Restore failed:", err);
+    res.status(500).json({ error: "Gagal merestore database dari file cadangan." });
+  }
+});
+
+// GET Public visible projects (Public page dropdown usage)
+app.get("/api/public-projects", async (req, res) => {
+  try {
+    const projects = await getProjectsFromDb();
+    const publicList = projects.filter((p: any) => p.status === "public" || p.status === "PUBLIC" || !p.status);
+    res.json(publicList.map((p: any) => ({ id: p.id, name: p.name })));
+  } catch (err) {
+    console.error("Gagal memuat daftar proyek publik:", err);
+    res.status(500).json({ error: "Gagal memuat daftar publik." });
+  }
+});
+
+function createAutoBackup(db: any, prevProjectName: string, initializedProjectName: string, createdBy: string) {
+  try {
+    const backupsDir = path.join(process.cwd(), "backups");
+    if (!fs.existsSync(backupsDir)) {
+      fs.mkdirSync(backupsDir, { recursive: true });
+    }
+    const timestamp = new Date().toISOString();
+    const cleanTimestamp = timestamp.replace(/[:.]/g, "-");
+    const filename = `db-backup-${cleanTimestamp}.json`;
+    const filepath = path.join(backupsDir, filename);
+    
+    // Save backup file
+    fs.writeFileSync(filepath, JSON.stringify(db, null, 2), "utf-8");
+    
+    // Add record to backup list
+    if (!db.backups) {
+      db.backups = [];
+    }
+    db.backups.push({
+      id: "backup-" + Date.now(),
+      timestamp,
+      prevProjectName: prevProjectName || "Proyek Awal",
+      initializedProjectName,
+      filename,
+      createdBy
+    });
+    console.log(`Auto Backup created successfully: ${filename}`);
+  } catch (error) {
+    console.error("Auto Backup creation failed:", error);
+  }
+}
+
 // POST Project initialization (Admin Only)
 app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMIN"]), async (req: any, res) => {
   const {
@@ -1705,6 +2259,9 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
 
   try {
     const db = getDBState();
+    
+    // Auto backup current db state
+    createAutoBackup(db, db.projectConfig?.name || "Inisiasi Pertama", projectName, req.user.name || req.user.email);
 
     const projectId = "project-" + Date.now();
 
@@ -1730,12 +2287,60 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
 
     // 2. Clear old data OR establish new budgets dynamically using percentages if requested
     const rabs = [
-      { id: "rab-1", itemName: "Pematangan Lahan & Organisasi Fondasi", category: "Foundation" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
-      { id: "rab-2", itemName: "Pekerjaan Struktur Kolom & Beton", category: "Structure" as any, targetAmount: Math.round(Number(budget) * 0.30), spentAmount: 0 },
-      { id: "rab-3", itemName: "Konstruksi Rangka Atap Utama", category: "Roofing" as any, targetAmount: Math.round(Number(budget) * 0.20), spentAmount: 0 },
-      { id: "rab-4", itemName: "Sistem Utilitas MEP & Kelistrikan/Sanitasi", category: "MEP" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
-      { id: "rab-5", itemName: "Finishing Cat, Tegel & Arsitektural", category: "Finishing" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
-      { id: "rab-6", itemName: "Legalitas, Perizinan & Biaya Operasional", category: "Operational" as any, targetAmount: Math.round(Number(budget) * 0.05), spentAmount: 0 },
+      { id: "rab-1-" + Date.now(), itemName: "Pematangan Lahan & Organisasi Fondasi", category: "Foundation" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
+      { id: "rab-2-" + Date.now(), itemName: "Pekerjaan Struktur Kolom & Beton", category: "Structure" as any, targetAmount: Math.round(Number(budget) * 0.30), spentAmount: 0 },
+      { id: "rab-3-" + Date.now(), itemName: "Konstruksi Rangka Atap Utama", category: "Roofing" as any, targetAmount: Math.round(Number(budget) * 0.20), spentAmount: 0 },
+      { id: "rab-4-" + Date.now(), itemName: "Sistem Utilitas MEP & Kelistrikan/Sanitasi", category: "MEP" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
+      { id: "rab-5-" + Date.now(), itemName: "Finishing Cat, Tegel & Arsitektural", category: "Finishing" as any, targetAmount: Math.round(Number(budget) * 0.15), spentAmount: 0 },
+      { id: "rab-6-" + Date.now(), itemName: "Legalitas, Perizinan & Biaya Operasional", category: "Operational" as any, targetAmount: Math.round(Number(budget) * 0.05), spentAmount: 0 },
+    ];
+
+    const templateMilestones = [
+      {
+        id: `ms-${Date.now()}-1`,
+        title: "Pekerjaan Persiapan & Fondasi",
+        expectedDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        category: "Foundation",
+        status: "PENDING",
+        progressNotes: "Pekerjaan pematangan lahan dan pengecoran fondasi rencana.",
+        projectId: projectId
+      },
+      {
+        id: `ms-${Date.now()}-2`,
+        title: "Struktur Balok & Tiang Beton",
+        expectedDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        category: "Structure",
+        status: "PENDING",
+        progressNotes: "Pengecoran pilar dan balok utama penopang bangunan.",
+        projectId: projectId
+      },
+      {
+        id: `ms-${Date.now()}-3`,
+        title: "Pekerjaan Konstruksi Rangka Atap Utama",
+        expectedDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        category: "Roofing",
+        status: "PENDING",
+        progressNotes: "Pemasangan penutup atap atau kubah utama.",
+        projectId: projectId
+      },
+      {
+        id: `ms-${Date.now()}-4`,
+        title: "Instalasi Mekanikal, Elektrikal & Plambing (MEP)",
+        expectedDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        category: "MEP",
+        status: "PENDING",
+        progressNotes: "Pemasangan pipa air bersih, sanitasi, dan kabel listrik bangunan.",
+        projectId: projectId
+      },
+      {
+        id: `ms-${Date.now()}-5`,
+        title: "Finishing Marmer, Keramik & Ornamen Arsitektur",
+        expectedDate: new Date(Date.now() + 150 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        category: "Finishing",
+        status: "PENDING",
+        progressNotes: "Finishing cat, pemasangan lantai utama masjid, serta ornamen mihrab.",
+        projectId: projectId
+      }
     ];
 
     if (startFresh) {
@@ -1743,59 +2348,30 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
       db.expenditures = [];
       db.progress = [];
       db.auditLogs = [];
-      db.budgets = rabs;
+      db.budgets = rabs.map(r => ({ ...r, projectId }));
       db.projects = []; // Clear old projects for a fresh start!
-      db.milestones = [
-        {
-          id: "ms-1",
-          title: "Pekerjaan Persiapan & Fondasi",
-          expectedDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          category: "Foundation",
-          status: "PENDING",
-          progressNotes: "Pekerjaan pematangan lahan dan pengecoran fondasi rencana."
-        },
-        {
-          id: "ms-2",
-          title: "Struktur Balok & Tiang Beton",
-          expectedDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          category: "Structure",
-          status: "PENDING",
-          progressNotes: "Pengecoran pilar dan balok utama penopang bangunan."
-        },
-        {
-          id: "ms-3",
-          title: "Pekerjaan Konstruksi Rangka Atap Utama",
-          expectedDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          category: "Roofing",
-          status: "PENDING",
-          progressNotes: "Pemasangan penutup atap atau kubah utama."
-        },
-        {
-          id: "ms-4",
-          title: "Instalasi Mekanikal, Elektrikal & Plambing (MEP)",
-          expectedDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          category: "MEP",
-          status: "PENDING",
-          progressNotes: "Pemasangan pipa air bersih, sanitasi, dan kabel listrik bangunan."
-        },
-        {
-          id: "ms-5",
-          title: "Finishing Marmer, Keramik & Ornamen Arsitektur",
-          expectedDate: new Date(Date.now() + 150 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          category: "Finishing",
-          status: "PENDING",
-          progressNotes: "Finishing cat, pemasangan lantai utama masjid, serta ornamen mihrab."
-        }
-      ];
+      db.milestones = templateMilestones;
     } else {
-      // Just adjust the budgets to the new percentages to fit the config
-      db.budgets = rabs;
+      if (!db.budgets) db.budgets = [];
+      db.budgets.push(...rabs.map(r => ({ ...r, projectId })));
+      if (!db.milestones) db.milestones = [];
+      db.milestones.push(...templateMilestones);
     }
 
     db.projects.push({ ...db.projectConfig });
 
     // 3. Establish Treasurer and Project Manager users
-    const adminUsers = db.users.filter((user: any) => user.role === "ADMIN");
+    // If startFresh is true, we keep only Admin users from old state. 
+    // If FALSE, we keep ALL existing users, but filter out anyway if their email conflicts with our new team to prevent bugs.
+    let remainingUsers = [];
+    if (startFresh) {
+      remainingUsers = db.users.filter((user: any) => user.role === "ADMIN");
+    } else {
+      remainingUsers = db.users.filter((user: any) => 
+        user.email !== treasurerEmail.toLowerCase() && 
+        user.email !== pmEmail.toLowerCase()
+      );
+    }
 
     // Create Treasurer user
     const treasurerUser = {
@@ -1817,7 +2393,7 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
       createdAt: new Date().toISOString()
     };
 
-    db.users = [...adminUsers, treasurerUser, pmUser];
+    db.users = [...remainingUsers, treasurerUser, pmUser];
 
     // Log the audit
     const auditSetup = {
@@ -1846,8 +2422,16 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
           await prisma.budget.deleteMany({});
           await prisma.projectConfig.deleteMany({});
           await prisma.project.deleteMany({});
+          await prisma.user.deleteMany({ where: { role: { in: ["TREASURER", "PROJECT_MANAGER"] } } });
         } else {
-          await prisma.budget.deleteMany({});
+          // If not starting fresh, only delete conflicting email records from User table
+          await prisma.user.deleteMany({
+            where: {
+              email: {
+                in: [treasurerEmail.toLowerCase(), pmEmail.toLowerCase()]
+              }
+            }
+          });
         }
 
         // Write Project and Config records in Postgres
@@ -1886,12 +2470,12 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
         const prismaBudgets = rabs.map(b => ({
           itemName: b.itemName,
           category: b.category,
-          targetAmount: b.targetAmount
+          targetAmount: b.targetAmount,
+          projectId: projectId
         }));
         await prisma.budget.createMany({ data: prismaBudgets });
 
-        // Update Users in Prisma
-        await prisma.user.deleteMany({ where: { role: { in: ["TREASURER", "PROJECT_MANAGER"] } } });
+        // Update Users in Prisma (conflict is already handled above)
         await prisma.user.create({
           data: {
             email: treasurerEmail.toLowerCase(),
@@ -1923,6 +2507,9 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
         console.error("Prisma config synchronization failed", e);
       }
     }
+
+    // Call dynamic self-healing database migration
+    await healDatabaseOrphanedProjects().catch(err => console.error(err));
 
     const finalConfig = prisma ? await getProjectConfigFromDb() : db.projectConfig;
     res.json({
@@ -2002,11 +2589,13 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 // 1. Calculations & Summaries (TAMPER-PROOF BALANCE ENGINE)
 app.get("/api/financial-summary", async (req, res) => {
   try {
+    const targetProjectId = await getTargetProjectId(req);
+    await healDatabaseOrphanedProjects();
     const [donations, expenditures, budgets, progress] = await Promise.all([
-      getDonations(),
-      getExpenditures(),
-      getBudgets(),
-      getProgress()
+      getDonations(targetProjectId),
+      getExpenditures(targetProjectId),
+      getBudgets(targetProjectId),
+      getProgress(targetProjectId)
     ]);
     
     // Calculate dynamically from full ledger history to satisfy the tamper-proof formula requirement.
@@ -2035,7 +2624,7 @@ app.get("/api/financial-summary", async (req, res) => {
       currentCashBalance,
       totalExpenditures: expendituresSum,
       physicalProgressPercent: currentProgressPercent,
-      projectConfig: await getProjectConfigFromDb(),
+      projectConfig: await getProjectConfigFromDb(targetProjectId),
       budgets,
       progress,
       // Add categories analysis for charts
@@ -2567,7 +3156,12 @@ app.get("/api/milestones", async (req, res) => {
       db.milestones = [];
       saveDBState(db);
     }
-    res.json(db.milestones);
+    const activeProjectId = await getTargetProjectId(req);
+    const filtered = db.milestones.filter((m: any) => {
+      const pid = m.projectId || "project-default";
+      return pid === activeProjectId;
+    });
+    res.json(filtered);
   } catch (err) {
     console.error("GET milestones error:", err);
     res.status(500).json({ error: "Gagal memuat daftar milestones." });
@@ -2588,6 +3182,7 @@ app.post("/api/milestones", authenticateToken, requireRole(["ADMIN", "PROJECT_MA
       db.milestones = [];
     }
 
+    const activeProjectId = await getActiveProjectId();
     const milestoneId = `ms-${Date.now()}`;
     const newMilestone = {
       id: milestoneId,
@@ -2595,16 +3190,15 @@ app.post("/api/milestones", authenticateToken, requireRole(["ADMIN", "PROJECT_MA
       expectedDate,
       category,
       status,
-      progressNotes: progressNotes || ""
+      progressNotes: progressNotes || "",
+      projectId: activeProjectId
     };
 
     db.milestones.push(newMilestone);
     saveDBState(db);
 
     // Audit Logging
-    const auditId = `log-${Date.now()}`;
-    db.auditLogs.unshift({
-      id: auditId,
+    await addAuditLog({
       timestamp: new Date().toISOString(),
       action: "CREATE",
       tableName: "Budget" as const, // matching existing types
@@ -2612,7 +3206,6 @@ app.post("/api/milestones", authenticateToken, requireRole(["ADMIN", "PROJECT_MA
       changedBy: operator.name,
       details: `Milestone baru dibuat: "${title}" (${category}), estimasi tanggal selesai: ${expectedDate}.`
     });
-    saveDBState(db);
 
     res.status(201).json(newMilestone);
   } catch (err) {
@@ -2651,9 +3244,7 @@ app.put("/api/milestones/:id", authenticateToken, requireRole(["ADMIN", "PROJECT
     saveDBState(db);
 
     // Audit Logging
-    const auditId = `log-${Date.now()}`;
-    db.auditLogs.unshift({
-      id: auditId,
+    await addAuditLog({
       timestamp: new Date().toISOString(),
       action: "UPDATE",
       tableName: "Budget" as const,
@@ -2661,7 +3252,6 @@ app.put("/api/milestones/:id", authenticateToken, requireRole(["ADMIN", "PROJECT
       changedBy: operator.name,
       details: `Milestone "${updatedMilestone.title}" diperbarui oleh ${operator.name}. Status: ${updatedMilestone.status}.`
     });
-    saveDBState(db);
 
     res.json(updatedMilestone);
   } catch (err) {
@@ -2690,9 +3280,7 @@ app.delete("/api/milestones/:id", authenticateToken, requireRole(["ADMIN", "PROJ
     saveDBState(db);
 
     // Audit Logging
-    const auditId = `log-${Date.now()}`;
-    db.auditLogs.unshift({
-      id: auditId,
+    await addAuditLog({
       timestamp: new Date().toISOString(),
       action: "DELETE",
       tableName: "Budget" as const,
@@ -2700,7 +3288,6 @@ app.delete("/api/milestones/:id", authenticateToken, requireRole(["ADMIN", "PROJ
       changedBy: operator.name,
       details: `Milestone "${milestoneTitle}" dihapus oleh ${operator.name}.`
     });
-    saveDBState(db);
 
     res.json({ message: "Milestone berhasil dihapus." });
   } catch (err) {
@@ -2776,6 +3363,9 @@ app.get(["/oauth-callback", "/oauth-callback/"], (req, res) => {
 
 // Setup development devServer or production asset pipelines
 async function startServer() {
+  // Run self-healing database migration for any pre-existing/orphaned default data
+  await healDatabaseOrphanedProjects().catch(err => console.error("Startup HealDB error:", err));
+
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({

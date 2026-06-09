@@ -27,10 +27,12 @@ import {
   LogOut,
   UserCheck,
   Settings,
+  Cog,
   Download,
   Cloud,
   QrCode,
-  Smartphone
+  Smartphone,
+  Database
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -120,7 +122,8 @@ const getBase64Image = (imgUrl: string): Promise<string> => {
 
 export default function App() {
   // Navigation
-  const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "config" | "google">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "setting">("dashboard");
+  const [settingSubTab, setSettingSubTab] = useState<"project" | "rekening" | "google" | "keamanan">("project");
   const [googleToken, setGoogleTokenState] = useState<string | null>(() => localStorage.getItem("google_access_token"));
   const setGoogleToken = (token: string | null) => {
     setGoogleTokenState(token);
@@ -250,6 +253,13 @@ export default function App() {
   const [bankQrUrlForm, setBankQrUrlForm] = useState("");
   const [bankIsActiveForm, setBankIsActiveForm] = useState(true);
 
+  // Visibility & auto backup state variables
+  const [visibilityMode, setVisibilityMode] = useState<"single" | "multiple">("single");
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [publicProjects, setPublicProjects] = useState<Array<{ id: string, name: string }>>([]);
+  const [backupsList, setBackupsList] = useState<any[]>([]);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+
   // UI status messages
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
@@ -267,7 +277,9 @@ export default function App() {
   const [newProjPmName, setNewProjPmName] = useState("");
   const [newProjPmEmail, setNewProjPmEmail] = useState("");
   const [newProjPmPassword, setNewProjPmPassword] = useState("");
-  const [newProjStartFresh, setNewProjStartFresh] = useState(true);
+  const [newProjStartFresh, setNewProjStartFresh] = useState(false);
+  const [startFreshConfirmText, setStartFreshConfirmText] = useState("");
+  const [showStartFreshModal, setShowStartFreshModal] = useState(false);
   const [projConfigLoading, setProjConfigLoading] = useState(false);
 
   // Helper functions for multiple choice funding sources
@@ -284,20 +296,52 @@ export default function App() {
       .join(' + ');
   };
 
+  const fetchPublicProjects = async () => {
+    try {
+      const res = await fetch("/api/public-projects");
+      if (res.ok) {
+        const data = await res.json();
+        setPublicProjects(data);
+      }
+    } catch (e) {
+      console.error("Gagal memuat proyek publik:", e);
+    }
+  };
+
+  const fetchVisibilitySettings = async () => {
+    try {
+      const res = await fetch("/api/visibility-settings");
+      if (res.ok) {
+        const data = await res.json();
+        setVisibilityMode(data.visibilityMode || "single");
+      }
+    } catch (e) {
+      console.error("Gagal memuat mode visibilitas:", e);
+    }
+  };
+
   // Fetch core data from full-stack APIs
-  const fetchAllData = async (tokenOverride?: string | null) => {
+  const fetchAllData = async (tokenOverride?: string | null, forceProjectId?: string) => {
     try {
       setLoading(true);
       const activeToken = tokenOverride !== undefined ? tokenOverride : authToken;
       const headersOpt = activeToken ? { "Authorization": `Bearer ${activeToken}` } : {};
+      
+      const projIdToUse = forceProjectId !== undefined ? forceProjectId : selectedProjectId;
+      const q = projIdToUse ? `?projectId=${projIdToUse}` : "";
+
+      // Fetch public projects and visibility mode in parallel
+      fetchPublicProjects();
+      fetchVisibilitySettings();
+
       const [sumRes, donRes, expRes, progRes, auditRes, sysRes, mileRes, bankRes] = await Promise.all([
-        fetch("/api/financial-summary", { headers: headersOpt }),
-        fetch("/api/donations", { headers: headersOpt }),
-        fetch("/api/expenditures", { headers: headersOpt }),
-        fetch("/api/progress", { headers: headersOpt }),
-        fetch("/api/audit-logs", { headers: headersOpt }),
+        fetch(`/api/financial-summary${q}`, { headers: headersOpt }),
+        fetch(`/api/donations${q}`, { headers: headersOpt }),
+        fetch(`/api/expenditures${q}`, { headers: headersOpt }),
+        fetch(`/api/progress${q}`, { headers: headersOpt }),
+        fetch(`/api/audit-logs${q}`, { headers: headersOpt }),
         fetch("/api/system-info"),
-        fetch("/api/milestones", { headers: headersOpt }),
+        fetch(`/api/milestones${q}`, { headers: headersOpt }),
         fetch("/api/bank-accounts")
       ]);
 
@@ -328,9 +372,10 @@ export default function App() {
 
       if (activeToken) {
         try {
-          const [projRes, profileRes] = await Promise.all([
+          const [projRes, profileRes, backupRes] = await Promise.all([
             fetch("/api/projects", { headers: headersOpt }),
-            fetch("/api/auth/me", { headers: headersOpt })
+            fetch("/api/auth/me", { headers: headersOpt }),
+            fetch("/api/backups", { headers: headersOpt })
           ]);
           
           if (projRes.status === 401 || projRes.status === 403 || profileRes.status === 401 || profileRes.status === 403) {
@@ -347,6 +392,10 @@ export default function App() {
           if (projRes.ok) {
             const projData = await projRes.json();
             setProjects(projData);
+          }
+          if (backupRes.ok) {
+            const backupData = await backupRes.json();
+            setBackupsList(backupData);
           }
           if (profileRes.ok) {
             const profileData = await profileRes.json();
@@ -864,37 +913,7 @@ export default function App() {
     }
   };
 
-  const handleInitializeProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError("");
-    setFormSuccess("");
-
-    if (!newProjName.trim()) {
-      setFormError("Nama proyek wajib diisi.");
-      return;
-    }
-    if (!newProjBudget || Number(newProjBudget) <= 0) {
-      setFormError("Anggaran proyek wajib berupa angka positif.");
-      return;
-    }
-    if (!newProjDescription.trim()) {
-      setFormError("Deskripsi rencana proyek wajib diisi.");
-      return;
-    }
-    if (!newProjTreasurerName.trim() || !newProjTreasurerEmail.trim() || !newProjTreasurerPassword.trim()) {
-      setFormError("Detail akun Bendahara (Nama, Email, Password) wajib diisi.");
-      return;
-    }
-    if (!newProjPmName.trim() || !newProjPmEmail.trim() || !newProjPmPassword.trim()) {
-      setFormError("Detail akun Project Manager (Nama, Email, Password) wajib diisi.");
-      return;
-    }
-
-    if (newProjTreasurerPassword.length < 4 || newProjPmPassword.length < 4) {
-      setFormError("Kata sandi akun pengelola (Bendahara & PM) minimal harus 4 karakter.");
-      return;
-    }
-
+  const executeProjectInitialization = async () => {
     try {
       setProjConfigLoading(true);
       const headersOpt = authToken ? { 
@@ -941,6 +960,7 @@ export default function App() {
         setNewProjPmName("");
         setNewProjPmEmail("");
         setNewProjPmPassword("");
+        setStartFreshConfirmText(""); // Reset text verification
 
         // Refresh database & state
         fetchAllData();
@@ -953,7 +973,54 @@ export default function App() {
       setFormError("Terjadi hambatan koneksi saat mengirim konfigurasi ke server.");
     } finally {
       setProjConfigLoading(false);
+      setShowStartFreshModal(false);
     }
+  };
+
+  const handleInitializeProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    setFormSuccess("");
+
+    if (!newProjName.trim()) {
+      setFormError("Nama proyek wajib diisi.");
+      return;
+    }
+    if (!newProjBudget || Number(newProjBudget) <= 0) {
+      setFormError("Anggaran proyek wajib berupa angka positif.");
+      return;
+    }
+    if (!newProjDescription.trim()) {
+      setFormError("Deskripsi rencana proyek wajib diisi.");
+      return;
+    }
+    if (!newProjTreasurerName.trim() || !newProjTreasurerEmail.trim() || !newProjTreasurerPassword.trim()) {
+      setFormError("Detail akun Bendahara (Nama, Email, Password) wajib diisi.");
+      return;
+    }
+    if (!newProjPmName.trim() || !newProjPmEmail.trim() || !newProjPmPassword.trim()) {
+      setFormError("Detail akun Project Manager (Nama, Email, Password) wajib diisi.");
+      return;
+    }
+
+    if (newProjTreasurerPassword.length < 4 || newProjPmPassword.length < 4) {
+      setFormError("Kata sandi akun pengelola (Bendahara & PM) minimal harus 4 karakter.");
+      return;
+    }
+
+    // Checking if start fresh is checked without valid confirm text typing
+    if (newProjStartFresh) {
+      if (startFreshConfirmText !== "STERILKAN DATABASE") {
+        setFormError("Anda harus mengetik 'STERILKAN DATABASE' di kolom konfirmasi Zona Bahaya untuk melanjutkan.");
+        return;
+      }
+      // Open the visual modal/dialog for deep confirmation before executing
+      setShowStartFreshModal(true);
+      return;
+    }
+
+    // Normal non-destructive flow
+    await executeProjectInitialization();
   };
 
   const startEditProject = (p: any) => {
@@ -1053,6 +1120,35 @@ export default function App() {
     } catch (err) {
       console.error("Error deleting project", err);
       setFormError("Gagal menghapus proyek karena masalah koneksi.");
+    }
+  };
+
+  const handleActivateProject = async (id: string) => {
+    try {
+      setFormError("");
+      setFormSuccess("");
+
+      const headersOpt = authToken ? { 
+        "Authorization": `Bearer ${authToken}`
+      } : {};
+
+      const response = await fetch(`/api/projects/${id}/activate`, {
+        method: "POST",
+        headers: headersOpt
+      });
+
+      if (response.ok) {
+        setFormSuccess("Proyek berhasil diaktifkan! Mengalihkan tampilan...");
+        setTimeout(() => setFormSuccess(""), 5000);
+        // Refresh everything
+        fetchAllData();
+      } else {
+        const err = await response.json();
+        setFormError(err.error || "Gagal mengaktifkan proyek.");
+      }
+    } catch (err) {
+      console.error("Error activating project", err);
+      setFormError("Gagal mengaktifkan proyek karena masalah koneksi.");
     }
   };
 
@@ -1777,28 +1873,17 @@ export default function App() {
           </button>
           {currentUser?.role === 'ADMIN' && (
             <button
-              onClick={() => setActiveTab("config")}
+              onClick={() => setActiveTab("setting")}
               className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
-                activeTab === "config"
+                activeTab === "setting"
                   ? "bg-amber-100 text-amber-900 shadow-sm border border-amber-200"
                   : "text-amber-700 hover:text-amber-900 hover:bg-amber-50"
               }`}
             >
-              <Settings className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
-              <span>Inisialisasi Proyek</span>
+              <Cog className="h-3.5 w-3.5 text-amber-500" />
+              <span>Pengaturan Admin</span>
             </button>
           )}
-          <button
-            onClick={() => setActiveTab("google")}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
-              activeTab === "google"
-                ? "bg-blue-100 text-blue-900 shadow-sm border border-blue-200"
-                : "text-blue-700 hover:text-blue-900 hover:bg-blue-50"
-            }`}
-          >
-            <Cloud className="h-3.5 w-3.5 text-blue-500" />
-            <span>Integrasi Google</span>
-          </button>
         </nav>
 
         {/* Right Side: Integrity status */}
@@ -1870,22 +1955,15 @@ export default function App() {
         </button>
         {currentUser?.role === 'ADMIN' && (
           <button
-            onClick={() => setActiveTab("config")}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === "config" ? "bg-amber-600 text-white" : "bg-slate-100 text-slate-700"
+            onClick={() => setActiveTab("setting")}
+            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1 ${
+              activeTab === "setting" ? "bg-amber-600 text-white" : "bg-slate-100 text-slate-700"
             }`}
           >
-            Inisialisasi
+            <Cog className="h-3.5 w-3.5" />
+            <span>Pengaturan</span>
           </button>
         )}
-        <button
-          onClick={() => setActiveTab("google")}
-          className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-            activeTab === "google" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"
-          }`}
-        >
-          Integrasi Google
-        </button>
       </div>
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
@@ -1905,7 +1983,7 @@ export default function App() {
               <div className="space-y-6">
 
                 {/* Dashboard Page Title Section */}
-                <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                       {summary?.projectConfig?.initialized && summary?.projectConfig?.name 
@@ -1916,12 +1994,39 @@ export default function App() {
                       Dashboard Utama Transparansi Finansial Real-Time Proyek
                     </p>
                   </div>
-                  {summary?.projectConfig?.initialized && (
-                    <div className="flex items-center gap-2 font-mono text-[10px] bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full border border-emerald-100 self-start sm:self-center">
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
-                      <span className="font-bold tracking-wider uppercase">PELACAKAN AKTIF</span>
-                    </div>
-                  )}
+                  
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Public Project Selector Dropdown */}
+                    {visibilityMode === "multiple" && publicProjects.length > 0 && (
+                      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                        <label htmlFor="public-project-selector" className="text-[10px] uppercase font-bold text-slate-500 tracking-wider font-mono">
+                          Pilih Proyek:
+                        </label>
+                        <select
+                          id="public-project-selector"
+                          value={selectedProjectId || (summary?.projectConfig?.id || "")}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedProjectId(val);
+                            fetchAllData(undefined, val);
+                          }}
+                          className="text-xs font-semibold bg-white border border-slate-300 rounded px-2 py-1 text-slate-700 focus:outline-hidden focus:border-emerald-500 cursor-pointer"
+                        >
+                          <option value="">-- Proyek Utama Aktif --</option>
+                          {publicProjects.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {summary?.projectConfig?.initialized && (
+                      <div className="flex items-center gap-2 font-mono text-[10px] bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full border border-emerald-100">
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
+                        <span className="font-bold tracking-wider uppercase">PELACAKAN AKTIF</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Project Setup Information Board */}
@@ -2048,31 +2153,31 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Visual Ledger Splits */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Visual Ledger Splits (Full width main table + double-column secondary grid below) */}
+                <div className="space-y-6">
                   
-                  {/* Ledger Table (Left 8 columns) */}
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col lg:col-span-8 overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
-                      <div>
-                        <h3 className="font-bold text-slate-700">Buku Transparansi Kas Publik</h3>
-                        <p className="text-[10px] text-slate-550 font-semibold uppercase tracking-wider leading-none mt-1">Snapshot riwayat mutasi dari database cloud terverifikasi</p>
+                  {/* Ledger Table (Full Width) */}
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-slate-700 truncate sm:whitespace-normal">Buku Transparansi Kas Publik</h3>
+                        <p className="text-[10px] text-slate-550 font-semibold uppercase tracking-wider leading-relaxed mt-1 sm:whitespace-normal">Snapshot riwayat mutasi dari database cloud terverifikasi</p>
                       </div>
-                      <div className="flex gap-2">
-                        <div className="relative">
+                      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
+                        <div className="relative flex-1 min-w-[140px] md:flex-none">
                           <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                           <input 
                             type="text" 
                             placeholder="Cari nama atau ID..." 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="text-xs border border-slate-200 rounded px-3 py-1.5 pl-8 w-44 bg-white focus:outline-hidden focus:border-emerald-600"
+                            className="text-xs border border-slate-200 rounded px-3 py-1.5 pl-8 w-full md:w-44 bg-white focus:outline-hidden focus:border-emerald-600"
                           />
                         </div>
                         <select 
                           value={ledgerFilter} 
                           onChange={(e: any) => setLedgerFilter(e.target.value)}
-                          className="text-xs border border-slate-200 rounded px-2.5 py-1.5 font-medium text-slate-600 bg-white focus:outline-hidden"
+                          className="text-xs border border-slate-200 rounded px-2.5 py-1.5 font-medium text-slate-600 bg-white focus:outline-hidden flex-1 min-w-[140px] md:flex-none"
                         >
                           <option value="all">Semua Aktivitas</option>
                           <option value="donations">Hanya Donasi</option>
@@ -2082,18 +2187,18 @@ export default function App() {
                           <button
                             type="button"
                             onClick={handleDownloadLedgerPDF}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border border-emerald-500/10"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs border border-emerald-500/10 flex-1 md:flex-none whitespace-nowrap min-w-max"
                             title="Unduh Buku Mutasi Sebagai Laporan PDF Resmi"
                           >
-                            <Download className="h-3.5 w-3.5" />
-                            <span>Unduh PDF</span>
+                            <Download className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span className="whitespace-nowrap">Unduh PDF</span>
                           </button>
                         )}
                       </div>
                     </div>
                     
-                    <div className="overflow-x-auto flex-1">
-                      <table className="w-full text-left">
+                    <div className="overflow-x-auto flex-1 scrollbar-thin">
+                      <table className="w-full text-left min-w-[650px]">
                         <thead className="text-[10px] uppercase font-bold text-slate-400 bg-slate-50 border-b border-slate-100">
                           <tr>
                             <th className="px-4 py-3">Tanggal / Waktu</th>
@@ -2157,8 +2262,8 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Right Column: Physical Progress & Audit Trail (col-span-4) */}
-                  <div className="lg:col-span-4 flex flex-col gap-6">
+                  {/* Secondary widgets grid under Ledger Table */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     
                     {/* Physical Construction Progress Card */}
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
@@ -3058,22 +3163,231 @@ export default function App() {
 
 
 
-            {activeTab === "config" && currentUser?.role === "ADMIN" && (
-              <div className="space-y-6 max-w-4xl mx-auto">
-                <div className="bg-amber-50/50 border border-amber-200/60 p-6 rounded-2xl shadow-sm space-y-4 animate-fade-in">
-                  <div className="flex items-center space-x-3 text-amber-800">
-                    <div className="bg-amber-600 text-white p-2 rounded-xl">
-                      <Settings className="h-5 w-5 animate-spin-slow" />
-                    </div>
+            {activeTab === "setting" && currentUser?.role === "ADMIN" && (
+              <div className="space-y-6 max-w-6xl mx-auto md:pb-12">
+                {/* Centralized Settings Dashboard Title Section */}
+                <div className="bg-slate-900 text-white rounded-2xl border border-slate-800 shadow-xl p-6 md:p-8 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                  <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
-                      <h3 className="font-bold text-sm tracking-tight text-slate-800">Inisialisasi & Konfigurasi Utama Proyek</h3>
-                      <p className="text-xxs text-amber-700 font-medium">Layanan ini khusus diakses oleh tingkat administrator tertinggi untuk mendefinisikan rincian proyek baru.</p>
+                      <span className="text-[10px] font-mono font-extrabold text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md uppercase tracking-wider">
+                        👑 KONSOL SUPER ADMINISTRATOR
+                      </span>
+                      <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-2 flex items-center gap-2">
+                        <Cog className="h-6 w-6 text-amber-500 animate-spin-slow" />
+                        Pusat Pengaturan & Setup Transparansi
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                        Kelola seluruh konfigurasi utama sistem secara terpusat, mulai dari inisialisasi proyek, status publikasi, pengaturan nomor rekening donasi, hingga integrasi otomatis laporan ke Google Drive & Google Sheets secara real-time.
+                      </p>
                     </div>
+                    <span className="text-[10px] bg-white/5 border border-white/10 text-slate-300 font-mono font-bold px-3 py-2 rounded-lg self-start md:self-center">
+                      SECURE BLUEPRINT v1.1
+                    </span>
                   </div>
                 </div>
 
+                {/* CENTRALIZED SUB-NAVIGATION PILLS */}
+                <div className="bg-white border border-slate-200 rounded-xl p-1.5 shadow-xs flex flex-wrap items-center gap-1 animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => setSettingSubTab("project")}
+                    className={`px-4 py-2 text-xs font-bold rounded-lg transition-all duration-150 flex items-center gap-2 cursor-pointer ${
+                      settingSubTab === "project"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-650 hover:bg-slate-50 hover:text-slate-950"
+                    }`}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    <span>Inisialisasi Proyek Baru</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettingSubTab("rekening")}
+                    className={`px-4 py-2 text-xs font-bold rounded-lg transition-all duration-150 flex items-center gap-2 cursor-pointer ${
+                      settingSubTab === "rekening"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-650 hover:bg-slate-50 hover:text-slate-950"
+                    }`}
+                  >
+                    <Coins className="h-3.5 w-3.5" />
+                    <span>Daftar Proyek & Rekening Bank</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettingSubTab("google")}
+                    className={`px-4 py-2 text-xs font-bold rounded-lg transition-all duration-150 flex items-center gap-2 cursor-pointer ${
+                      settingSubTab === "google"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-650 hover:bg-slate-50 hover:text-slate-950"
+                    }`}
+                  >
+                    <Cloud className="h-3.5 w-3.5" />
+                    <span>Integrasi Google Workspace</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettingSubTab("keamanan")}
+                    className={`px-4 py-2 text-xs font-bold rounded-lg transition-all duration-150 flex items-center gap-2 cursor-pointer ${
+                      settingSubTab === "keamanan"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-650 hover:bg-slate-50 hover:text-slate-950"
+                    }`}
+                  >
+                    <Database className="h-3.5 w-3.5" />
+                    <span>Visibilitas & Pemulihan Basis Data</span>
+                  </button>
+                </div>
+
+                {/* 1. ADVANCED DATA INTEGRITY CONTROL PANEL */}
+                {settingSubTab === "keamanan" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+                  {/* VISIBILITY SETTINGS BOARD */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+                    <div className="flex items-center space-x-2 text-slate-800 border-b border-slate-100 pb-3">
+                      <Eye className="h-4 w-4 text-emerald-600 font-bold" />
+                      <h4 className="text-sm font-bold">Pengaturan Visibilitas Proyek</h4>
+                    </div>
+                    <p className="text-xxs text-slate-500 leading-relaxed">
+                      Atur apakah sistem memperbolehkan beberapa proyek aktif berjalan secara bersamaan, atau membatasi pelacakan hanya ke satu proyek utama aktif saja di halaman publik.
+                    </p>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition">
+                        <div className="space-y-0.5">
+                          <span className="text-xs font-semibold text-slate-700 block">Single Active Project</span>
+                          <span className="text-[10px] text-slate-400 block">Hanya 1 proyek aktif ditampilkan kepada publik.</span>
+                        </div>
+                        <input
+                          type="radio"
+                          id="vis-single"
+                          name="vis-mode"
+                          checked={visibilityMode === "single"}
+                          onChange={() => setVisibilityMode("single")}
+                          className="h-4 w-4 text-emerald-650 border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition">
+                        <div className="space-y-0.5">
+                          <span className="text-xs font-semibold text-slate-700 block">Multiple Active Projects</span>
+                          <span className="text-[10px] text-slate-400 block">Daftar dropdown proyek publik ditampilkan kepada pengunjung.</span>
+                        </div>
+                        <input
+                          type="radio"
+                          id="vis-multiple"
+                          name="vis-mode"
+                          checked={visibilityMode === "multiple"}
+                          onChange={() => setVisibilityMode("multiple")}
+                          className="h-4 w-4 text-emerald-650 border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/visibility-settings", {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${authToken}`
+                              },
+                              body: JSON.stringify({ visibilityMode })
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              setFormSuccess(data.message || "Pengaturan visibilitas berhasil disimpan.");
+                              fetchAllData();
+                            } else {
+                              setFormError(data.error || "Gagal memperbarui pengaturan visibilitas.");
+                            }
+                          } catch (err) {
+                            console.error("Save visibility error:", err);
+                            setFormError("Gagal terhubung dengan server.");
+                          }
+                        }}
+                        className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xxs font-bold transition shadow-xs cursor-pointer"
+                      >
+                        Simpan Mode Visibilitas
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* AUTO BACKUPS & RESTORE POINTS */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+                    <div className="flex items-center space-x-2 text-slate-800 border-b border-slate-100 pb-3">
+                      <Database className="h-4 w-4 text-amber-600 font-bold" />
+                      <h4 className="text-sm font-bold">Titik Re-Inisiasi & Cadangan Otomatis</h4>
+                    </div>
+                    <p className="text-xxs text-slate-500 leading-relaxed">
+                      Sistem melakukan <strong>auto backup basis data</strong> secara otomatis setiap kali admin menginisiasi proyek baru. Anda dapat memulihkan seluruh laporan keuangan ke titik restore di bawah.
+                    </p>
+
+                    <div className="space-y-2 max-h-[190px] overflow-y-auto scrollbar-thin pr-1">
+                      {backupsList.length === 0 ? (
+                        <div className="text-center py-8 text-neutral-400 text-xxs bg-neutral-50 rounded-xl border border-dashed border-neutral-200 italic">
+                          Belum ada titik backup otomatis yang tercatat.
+                        </div>
+                      ) : (
+                        backupsList.map((item: any) => (
+                          <div key={item.id} className="border border-slate-100 bg-slate-50/50 hover:bg-slate-50 rounded-lg p-2.5 flex items-center justify-between gap-3 text-xxs transition">
+                            <div className="space-y-0.5 flex-1 min-w-0">
+                              <span className="font-semibold text-slate-700 truncate block">
+                                Pre-Init: {item.prevProjectName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block truncate">
+                                Proyek Baru: {item.initializedProjectName}
+                              </span>
+                              <span className="text-[9px] text-slate-400 block font-mono">
+                                {new Date(item.timestamp).toLocaleString("id-ID")} • Oleh: {item.createdBy}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={restoringId !== null}
+                              onClick={async () => {
+                                const confirmed = window.confirm(`PERINGATAN BAHAYA!\n\nApakah Anda sangat yakin ingin mengembalikan seluruh data transaksi keuangan basis data ke titik restore tanggal ${new Date(item.timestamp).toLocaleString("id-ID")} ini?\n\nSemua data transaksi setelah tanggal restore point akan digantikan secara penuh oleh isi cadangan.`);
+                                if (!confirmed) return;
+                                
+                                setRestoringId(item.id);
+                                try {
+                                  const res = await fetch(`/api/backups/${item.id}/restore`, {
+                                    method: "POST",
+                                    headers: {
+                                      "Authorization": `Bearer ${authToken}`
+                                    }
+                                  });
+                                  const data = await res.json();
+                                  if (res.ok) {
+                                    setFormSuccess(data.message || "Basis data berhasil dikembalikan.");
+                                    fetchAllData();
+                                  } else {
+                                    setFormError(data.error || "Gagal mengembalikan basis data.");
+                                  }
+                                } catch (err) {
+                                  console.error("Restore backup error:", err);
+                                  setFormError("Gagal berkomunikasi dengan server backup.");
+                                } finally {
+                                  setRestoringId(null);
+                                }
+                              }}
+                              className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 whitespace-nowrap text-white text-[10px] font-bold rounded-lg transition shrink-0 cursor-pointer disabled:opacity-50"
+                            >
+                              {restoringId === item.id ? "Memulihkan..." : "Pulihkan"}
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+                )}
+
                 {/* DAFTAR PROYEK SECTION */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs">
+                {settingSubTab === "rekening" && (
+                  <>
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                     <div>
                       <h4 className="text-sm font-bold text-slate-800">Daftar Proyek Terdaftar (Super Admin)</h4>
@@ -3279,6 +3593,16 @@ export default function App() {
                                 </div>
 
                                 <div className="flex sm:flex-col gap-2 shrink-0 sm:self-center">
+                                  {summary?.projectConfig?.id !== p.id && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleActivateProject(p.id)}
+                                      className="flex-1 sm:flex-none py-1.5 px-3 border border-emerald-200 bg-emerald-50 text-emerald-800 rounded-lg hover:bg-emerald-100 transition text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      <CheckCircle className="h-3 w-3" />
+                                      Aktifkan & Lihat Proyek
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => startEditProject(p)}
                                     className="flex-1 sm:flex-none py-1.5 px-3 border border-amber-200 bg-amber-50 text-amber-800 rounded-lg hover:bg-amber-100 transition text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer"
@@ -3609,8 +3933,11 @@ export default function App() {
 
                   </div>
                 </div>
+              </>
+            )}
 
-                <form onSubmit={handleInitializeProject} className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-8 shadow-xs">
+                {settingSubTab === "project" && (
+                  <form onSubmit={handleInitializeProject} className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-8 shadow-xs">
                   
                   {/* 1. Project Basic Details */}
                   <div className="space-y-4">
@@ -3806,26 +4133,96 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 4. Strategy Resets */}
-                  <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200/40 space-y-2.5">
-                    <div className="flex items-start space-x-2.5">
-                      <input
-                        type="checkbox"
-                        id="startFresh"
-                        checked={newProjStartFresh}
-                        onChange={(e) => setNewProjStartFresh(e.target.checked)}
-                        className="mt-1 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
-                      />
-                      <label htmlFor="startFresh" className="text-xxs text-slate-700 leading-tight select-none cursor-pointer">
-                        <span className="block font-bold text-slate-800">Mulai Bersih (Rekomendasi)</span>
-                        Kosongkan histori donasi eksperimental, log progress fisik, dan tabel belanja kas rincian terdahulu agar sistem benar-benar steril untuk rencana proyek anyar ini. Rencana anggaran (RAB) akan terbentuk baru berdasarkan parameter persentase konstruk standar.
+                  {/* 4. Danger Zone / Strategy Resets */}
+                  <div className={`transition-all duration-300 p-4 rounded-xl border ${newProjStartFresh ? 'border-red-300 bg-red-50/60 shadow-sm shadow-red-150/20' : 'border-rose-100 bg-rose-50/20'} space-y-3`}>
+                    <div className="flex items-center space-x-2 pb-1 border-b border-rose-100/50">
+                      <ShieldAlert className={`h-4 w-4 ${newProjStartFresh ? 'text-red-600 animate-bounce' : 'text-rose-500'}`} />
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-rose-700">Zona Bahaya / Danger Zone</span>
+                      {newProjStartFresh && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-red-600 text-white animate-pulse">
+                          PENGHAPUSAN AKTIF
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-start space-x-3">
+                      <div className="flex items-center h-5">
+                        <input
+                          type="checkbox"
+                          id="startFresh"
+                          checked={newProjStartFresh}
+                          onChange={(e) => {
+                            setNewProjStartFresh(e.target.checked);
+                            if (!e.target.checked) setStartFreshConfirmText("");
+                          }}
+                          className="mt-1 rounded text-red-600 focus:ring-red-500 cursor-pointer h-4 w-4"
+                        />
+                      </div>
+                      <label htmlFor="startFresh" className="text-xxs text-slate-700 leading-relaxed select-none cursor-pointer">
+                        <span className={`block font-bold transition-all duration-200 ${newProjStartFresh ? 'text-red-700 text-xs' : 'text-slate-800'}`}>
+                          Mulai Bersih (Sterilkan Seluruh Database)
+                        </span>
+                        Sapu bersih semua histori donasi eksperimental, log progress aktivitas kontraktor, dan tabel rincian transaksi belanja kas terdahulu agar sistem benar-benar kosong.
                       </label>
                     </div>
+
+                    <AnimatePresence>
+                      {newProjStartFresh && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="p-3 bg-red-600 text-white rounded-lg text-xxs font-medium leading-normal space-y-1.5 shadow-md">
+                            <div className="flex items-center space-x-1.5 font-bold text-[11px] uppercase tracking-wide">
+                              <AlertTriangle className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+                              <span>Peringatan Destruktif Keras!</span>
+                            </div>
+                            <p className="opacity-95 text-[10px]">
+                              Mengaktifkan fitur ini berarti Anda akan <strong>MENGHAPUS PERMANEN</strong> seluruh donasi publik, rancangan anggaran biaya (RAB) serta realisasi belanja operasional instansi milik <strong>semua proyek-proyek terdahulu</strong> di database global. 
+                            </p>
+                            <p className="text-[9.5px] font-bold border-t border-red-500 pt-1.5 mt-1 bg-red-700/40 p-1.5 rounded text-amber-100">
+                              💡 REKOMENDASI PARALEL: Kosongkan centang ini jika Anda ingin proyek baru ini berjalan berdampingan tanpa menghapus data sejarah keuangan dari proyek lama!
+                            </p>
+
+                            {/* Text typing verification for safety */}
+                            <div className="mt-3 p-3 bg-red-950/40 rounded-lg border border-red-500/20 space-y-2 text-white">
+                              <label className="block text-[9.5px] font-extrabold uppercase text-amber-300">
+                                🛑 TULIS FRASA KONFIRMASI PEMPROSESAN:
+                              </label>
+                              <p className="text-[9.5px] text-red-100 leading-relaxed opacity-90">
+                                Untuk membuka kunci pengoperasian instruksi hapus ini, silakan ketik kata kunci <strong className="text-amber-300 font-mono select-all bg-red-900/50 px-1 py-0.5 rounded">STERILKAN DATABASE</strong> di bawah ini:
+                              </p>
+                              <input
+                                type="text"
+                                value={startFreshConfirmText}
+                                onChange={(e) => setStartFreshConfirmText(e.target.value)}
+                                placeholder="Ketik 'STERILKAN DATABASE'"
+                                className="w-full bg-red-900/40 border border-red-500/50 rounded-lg px-3 py-1.5 text-xs text-white placeholder-red-300/60 focus:outline-none focus:ring-1 focus:ring-red-400 font-sans tracking-wide"
+                              />
+                              {startFreshConfirmText === "STERILKAN DATABASE" ? (
+                                <p className="text-[9px] text-emerald-350 font-bold flex items-center space-x-1">
+                                  <span className="text-emerald-400">✓</span>
+                                  <span>Kata kunci cocok. Kunci pengaman dibuka.</span>
+                                </p>
+                              ) : startFreshConfirmText.length > 0 ? (
+                                <p className="text-[9px] text-amber-300 font-semibold flex items-center space-x-1 animate-pulse">
+                                  <span>⚠</span>
+                                  <span>Kata kunci belum sesuai...</span>
+                                </p>
+                              ) : null}
+                            </div>
+
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {/* Error / Success Feedback */}
                   {formError && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-xs font-medium">
+                    <div className="bg-red-55 p-3 rounded-lg text-red-750 text-xs font-semibold border border-red-200">
                       ⚠️ {formError}
                     </div>
                   )}
@@ -3840,44 +4237,61 @@ export default function App() {
                   <div className="flex justify-end pt-3">
                     <button
                       type="submit"
-                      disabled={projConfigLoading}
-                      className="w-full sm:w-auto bg-amber-600 hover:bg-amber-500 text-white px-8 py-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 shadow-sm disabled:opacity-50 cursor-pointer"
+                      disabled={projConfigLoading || (newProjStartFresh && startFreshConfirmText !== "STERILKAN DATABASE")}
+                      className={`w-full sm:w-auto px-8 py-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 shadow-sm disabled:opacity-50 cursor-pointer ${
+                        newProjStartFresh
+                          ? startFreshConfirmText === "STERILKAN DATABASE"
+                            ? "bg-red-600 hover:bg-red-700 text-white animate-pulse"
+                            : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                          : "bg-amber-600 hover:bg-amber-500 text-white"
+                      }`}
                     >
                       {projConfigLoading ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Membuat Proyek Baru...</span>
+                          <span>{newProjStartFresh ? "Menghapus & Menginisialisasi..." : "Membuat Proyek Baru..."}</span>
                         </>
                       ) : (
                         <>
-                          <Check className="h-4 w-4" />
-                          <span>Inisialisasi & Luncurkan Portal Proyek</span>
+                          {newProjStartFresh ? (
+                            <>
+                              <ShieldAlert className="h-4 w-4" />
+                              <span>{startFreshConfirmText === "STERILKAN DATABASE" ? "HAPUS PERMANEN & INISIALISASI BARU" : "Pembersihan Terkunci"}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="h-4 w-4" />
+                              <span>Inisialisasi & Luncurkan Portal Proyek</span>
+                            </>
+                          )}
                         </>
                       )}
                     </button>
                   </div>
 
                 </form>
-              </div>
-            )}
+              )}
 
-            {activeTab === "google" && (
-              <div className="space-y-6 max-w-5xl mx-auto animate-fade-in pb-12">
-                <GoogleDriveSheetsSync
-                  googleToken={googleToken}
-                  setGoogleToken={setGoogleToken}
-                  projectConfig={summary?.projectConfig}
-                  donations={donations}
-                  expenditures={expenditures}
-                  budgets={summary?.budgets || []}
-                  progress={progressLog}
-                  generateLedgerBlob={generateLedgerBlob}
-                  onLogAudit={logAuditFromClient}
-                />
-              </div>
-            )}
-          </>
-        )}
+              {/* 3. GOOGLE WORKSPACE INTEGRATION SUB-TAB */}
+              {settingSubTab === "google" && (
+                <div className="space-y-6 max-w-5xl mx-auto animate-fade-in pb-12">
+                  <GoogleDriveSheetsSync
+                    googleToken={googleToken}
+                    setGoogleToken={setGoogleToken}
+                    projectConfig={summary?.projectConfig}
+                    donations={donations}
+                    expenditures={expenditures}
+                    budgets={summary?.budgets || []}
+                    progress={progressLog}
+                    generateLedgerBlob={generateLedgerBlob}
+                    onLogAudit={logAuditFromClient}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
       </main>
 
       {/* FOOTER */}
@@ -4302,6 +4716,90 @@ export default function App() {
 
                 </form>
               )}
+
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* DESTRUCTIVE CONFIRMATION MODAL (DANGER ZONE) */}
+      <AnimatePresence>
+        {showStartFreshModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-red-950/75 backdrop-blur-md flex items-center justify-center p-4 z-55"
+            onClick={() => setShowStartFreshModal(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white border-4 border-red-600 rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative overflow-hidden space-y-5"
+            >
+              {/* Header */}
+              <div className="flex items-center space-x-3 text-red-600 border-b border-red-100 pb-4">
+                <div className="p-2 bg-red-100 rounded-2xl">
+                  <ShieldAlert className="h-7 w-7 text-red-600 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">Dua Langkah Konfirmasi Akut!</h3>
+                  <p className="text-[10px] text-red-600 uppercase tracking-widest font-bold">Langkah ini Tidak Dapat Dibatalkan</p>
+                </div>
+              </div>
+
+              {/* Warning Content */}
+              <div className="space-y-3.5">
+                <div className="bg-red-50 p-4 rounded-xl border border-red-200 text-slate-755 text-xxs sm:text-xs leading-relaxed space-y-2">
+                  <p className="font-semibold text-red-800 text-xs flex items-center space-x-1.5 flex-wrap">
+                    <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+                    <span>Perhatian kepada Administrator Utama:</span>
+                  </p>
+                  <p className="text-slate-700">
+                    Anda sedang menginisialisasi proyek baru dengan mengaktifkan mode <strong className="text-red-700">Mulai Bersih (Sterilkan Seluruh Database)</strong>. Tindakan ini akan mengosongkan riwayat secara menyeluruh:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 font-medium pl-1 text-slate-800">
+                    <li>Semua catatan donasi publik eksperimental</li>
+                    <li>Semua log progress pembangunan digital fisikal</li>
+                    <li>Rincian transaksi kas masuk & keluar terdahulu</li>
+                    <li>Rencana Anggaran Biaya (RAB) dari seluruh proyek-proyek di database</li>
+                  </ul>
+                  <p className="text-[10.5px] font-bold text-red-700 bg-red-100/50 p-2 rounded">
+                    ⚠️ data yang tertulis di server global saat ini akan lenyap selamanya dan tidak dapat dikembalikan dengan cara apapun.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowStartFreshModal(false)}
+                  className="w-full sm:w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-xs transition cursor-pointer border border-slate-200 flex items-center justify-center gap-1.5"
+                >
+                  Batal, Amankan Data
+                </button>
+                <button
+                  type="button"
+                  disabled={projConfigLoading}
+                  onClick={executeProjectInitialization}
+                  className="w-full sm:w-1/2 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md hover:shadow-red-200 disabled:opacity-50"
+                >
+                  {projConfigLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Memproses...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      <span>Ya, Hapus Permanen & Mulai</span>
+                    </>
+                  )}
+                </button>
+              </div>
 
             </motion.div>
           </motion.div>
