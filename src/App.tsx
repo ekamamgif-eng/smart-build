@@ -2022,7 +2022,7 @@ export default function App() {
                   {currentUser.role === 'ADMIN' ? (
                     <>
                       <Crown className="h-3 w-3 text-amber-500 shrink-0" />
-                      <span className="text-[10px]">SUPER ADMIN</span>
+                      <span className="text-[10px]">ADMIN</span>
                     </>
                   ) : currentUser.role === 'TREASURER' ? (
                     <>
@@ -2204,10 +2204,10 @@ export default function App() {
                       </div>
                       <div>
                         <span className="block font-bold text-slate-400 text-[9px] uppercase tracking-wider">Inisiator</span>
-                        <span className="text-xs font-bold text-slate-700">{summary.projectConfig.initializedBy || 'Super Admin'}</span>
+                        <span className="text-xs font-bold text-slate-700">{summary.projectConfig.initializedBy || 'Admin'}</span>
                       </div>
                       <div>
-                        <span className="block font-semibold text-slate-400 text-[9px] uppercase tracking-wider font-mono">Pelacakan Lapangan</span>
+                        <span className="block font-bold text-slate-400 text-[9px] uppercase tracking-wider font-mono">Pelacakan Lapangan</span>
                         <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
                           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
                           TRANSPARAN AKTIF
@@ -2220,7 +2220,7 @@ export default function App() {
                     <AlertTriangle className="h-7 w-7 text-amber-600 mx-auto animate-bounce" />
                     <h3 className="text-sm font-extrabold text-slate-800">Sistem Transparansi Bersih: Belum Ada Proyek Aktif</h3>
                     <p className="text-xs text-slate-600 max-w-xl mx-auto leading-relaxed">
-                      Sistem mendeteksi bahwa saat ini tidak ada proyek pembangunan yang terdaftar di basis data. Silakan masuk / login sebagai <span className="font-bold text-slate-800">Super Admin</span> dan buka menu <span className="font-bold text-amber-700">Inisialisasi Proyek</span> untuk menambahkan proyek pertama Anda.
+                      Sistem mendeteksi bahwa saat ini tidak ada proyek pembangunan yang terdaftar di basis data. Silakan masuk / login sebagai <span className="font-bold text-slate-800">Admin</span> dan buka menu <span className="font-bold text-amber-700">Inisialisasi Proyek</span> untuk menambahkan proyek pertama Anda.
                     </p>
                   </div>
                 )}
@@ -2395,15 +2395,28 @@ export default function App() {
                             className="text-xs border border-slate-200 rounded px-3 py-1.5 pl-8 w-full md:w-44 bg-white focus:outline-hidden focus:border-emerald-600"
                           />
                         </div>
-                        <select 
-                          value={ledgerFilter} 
-                          onChange={(e: any) => setLedgerFilter(e.target.value)}
-                          className="text-xs border border-slate-200 rounded px-2.5 py-1.5 font-medium text-slate-600 bg-white focus:outline-hidden flex-1 min-w-[140px] md:flex-none"
-                        >
-                          <option value="all">Semua Aktivitas</option>
-                          <option value="donations">Hanya Donasi</option>
-                          <option value="expenditures">Hanya Belanja/Pengeluaran</option>
-                        </select>
+                        <div className="flex flex-wrap items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 shadow-2xs">
+                          {[
+                            { value: 'all', title: 'Semua Aktivitas' },
+                            { value: 'donations', title: 'Hanya Donasi' },
+                            { value: 'expenditures', title: 'Hanya Belanja/Pengeluaran' },
+                          ].map((item) => {
+                            const isChecked = ledgerFilter === item.value;
+                            return (
+                              <label key={item.value} className="flex items-center gap-1.5 cursor-pointer select-none group text-xxs font-semibold text-slate-600 leading-none">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => setLedgerFilter(item.value as any)}
+                                  className="accent-emerald-600 rounded-sm h-3.5 w-3.5 cursor-pointer"
+                                />
+                                <span className="group-hover:text-emerald-700 transition-colors">
+                                  {item.title}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
                         {isTreasurerAuthenticated && (
                           <button
                             type="button"
@@ -2845,7 +2858,7 @@ export default function App() {
                           <CheckCircle className="h-5 w-5 text-emerald-400" />
                           <h2 className="text-lg font-bold">Dasbor Bendahara Resmi</h2>
                         </div>
-                        <p className="text-emerald-300 text-xs mt-1">Sesi Aktif: <span className="font-bold text-white">{currentUser?.name}</span> ({currentUser?.role === 'ADMIN' ? 'Super Admin' : 'Bendahara'})</p>
+                        <p className="text-emerald-300 text-xs mt-1">Sesi Aktif: <span className="font-bold text-white">{currentUser?.name}</span> ({currentUser?.role === 'ADMIN' ? 'Admin' : 'Bendahara'})</p>
                       </div>
 
                       <button 
@@ -2922,15 +2935,28 @@ export default function App() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <label className="block text-slate-500 mb-1 font-semibold">Metode Pembayaran</label>
-                                <select 
-                                  value={donationMethod}
-                                  onChange={(e: any) => setDonationMethod(e.target.value)}
-                                  className="w-full bg-white px-3 py-2 border border-slate-200 rounded-lg text-xs"
-                                >
-                                  <option value="Bank Transfer">Bank Transfer</option>
-                                  <option value="E-Wallet">QRIS/Dompet Digital</option>
-                                  <option value="Cash">Tunai</option>
-                                </select>
+                                <div className="flex flex-col gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                  {[
+                                    { value: 'Bank Transfer', title: 'Transfer Bank (BCA/Mandiri/BSI)' },
+                                    { value: 'E-Wallet', title: 'Dompet Digital (QRIS/LinkAja/Gopay)' },
+                                    { value: 'Cash', title: 'Tunai / Secara Langsung' },
+                                  ].map((item) => {
+                                    const isChecked = donationMethod === item.value;
+                                    return (
+                                      <label key={item.value} className="flex items-center gap-2 cursor-pointer select-none group text-xs text-slate-700 font-medium py-0.5">
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={() => setDonationMethod(item.value)}
+                                          className="accent-emerald-600 rounded h-4 w-4 cursor-pointer"
+                                        />
+                                        <span className="group-hover:text-emerald-700 transition-colors leading-normal">
+                                          {item.title}
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
                               </div>
 
                               <div>
@@ -3162,7 +3188,7 @@ export default function App() {
                           <BuildingPointIcon className="h-5 w-5 text-amber-400" />
                           <h2 className="text-lg font-bold text-white">Terminal Manajer Proyek</h2>
                         </div>
-                        <p className="text-slate-400 text-xs mt-1">Sesi Aktif: <span className="font-bold text-white">{currentUser?.name}</span> ({currentUser?.role === 'ADMIN' ? 'Super Admin' : 'Manajer Proyek'})</p>
+                        <p className="text-slate-400 text-xs mt-1">Sesi Aktif: <span className="font-bold text-white">{currentUser?.name}</span> ({currentUser?.role === 'ADMIN' ? 'Admin' : 'Manajer Proyek'})</p>
                       </div>
 
                       <button 
@@ -3288,15 +3314,28 @@ export default function App() {
 
                           <div>
                             <label className="block text-slate-505 mb-1 font-semibold">Status Awal *</label>
-                            <select
-                              value={newMilestoneStatus}
-                              onChange={(e: any) => setNewMilestoneStatus(e.target.value)}
-                              className="w-full bg-white px-3 py-2 border border-slate-200 rounded-lg text-xxs text-slate-850"
-                            >
-                              <option value="PENDING">Rencana / Pending</option>
-                              <option value="ON_GOING">Sedang Berlangsung</option>
-                              <option value="COMPLETED">Selesai (Completed)</option>
-                            </select>
+                            <div className="flex flex-col gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                              {[
+                                { value: 'PENDING', title: 'Rencana / Pending' },
+                                { value: 'ON_GOING', title: 'Sedang Berlangsung' },
+                                { value: 'COMPLETED', title: 'Selesai (Completed)' },
+                              ].map((item) => {
+                                const isChecked = newMilestoneStatus === item.value;
+                                return (
+                                  <label key={item.value} className="flex items-center gap-2 cursor-pointer select-none group text-xxs text-slate-700 font-medium leading-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => setNewMilestoneStatus(item.value as any)}
+                                      className="accent-emerald-600 rounded h-3.5 w-3.5 cursor-pointer"
+                                    />
+                                    <span className="group-hover:text-emerald-700 transition-colors leading-normal">
+                                      {item.title}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
 
@@ -3490,7 +3529,7 @@ export default function App() {
                     <div>
                       <span className="text-[10px] font-mono font-extrabold text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md uppercase tracking-wider flex items-center gap-1.5 w-max">
                         <Crown className="h-3 w-3 text-amber-500 shrink-0" />
-                        KONSOL SUPER ADMINISTRATOR
+                        KONSOL ADMIN
                       </span>
                       <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-2 flex items-center gap-2">
                         <Cog className="h-6 w-6 text-amber-500 animate-spin-slow" />
@@ -3709,7 +3748,7 @@ export default function App() {
                     <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                     <div>
-                      <h4 className="text-sm font-bold text-slate-800">Daftar Proyek Terdaftar (Super Admin)</h4>
+                      <h4 className="text-sm font-bold text-slate-800">Daftar Proyek Terdaftar (Admin)</h4>
                       <p className="text-xxs text-slate-400">Total {projects.length || 0} proyek terdaftar dalam database.</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -3756,15 +3795,28 @@ export default function App() {
 
                                   <div>
                                     <label className="block text-slate-700 text-xxs font-bold mb-1">Tipe Pekerjaan</label>
-                                    <select
-                                      value={editProjType}
-                                      onChange={(e: any) => setEditProjType(e.target.value)}
-                                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
-                                    >
-                                      <option value="baru">Proyek Baru</option>
-                                      <option value="renovasi">Renovasi</option>
-                                      <option value="alih_fungsi">Alih Fungsi</option>
-                                    </select>
+                                    <div className="flex flex-col gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                      {[
+                                        { value: 'baru', title: 'Proyek Baru' },
+                                        { value: 'renovasi', title: 'Renovasi' },
+                                        { value: 'alih_fungsi', title: 'Alih Fungsi' },
+                                      ].map((item) => {
+                                        const isChecked = editProjType === item.value;
+                                        return (
+                                          <label key={item.value} className="flex items-center gap-2 cursor-pointer select-none group text-xxs text-slate-750 font-medium leading-none">
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() => setEditProjType(item.value as any)}
+                                              className="accent-amber-500 rounded h-3.5 w-3.5 cursor-pointer"
+                                            />
+                                            <span className="group-hover:text-amber-655 transition-colors leading-normal">
+                                              {item.title}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
 
                                   <div>
@@ -3805,14 +3857,27 @@ export default function App() {
 
                                   <div>
                                     <label className="block text-slate-700 text-xxs font-bold mb-1">Akses & Publikasi</label>
-                                    <select
-                                      value={editProjStatus}
-                                      onChange={(e: any) => setEditProjStatus(e.target.value)}
-                                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
-                                    >
-                                      <option value="public">Publik (Terbuka)</option>
-                                      <option value="private">Privat (Internal)</option>
-                                    </select>
+                                    <div className="flex flex-col gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                      {[
+                                        { value: 'public', title: 'Publik (Terbuka)' },
+                                        { value: 'private', title: 'Privat (Internal)' },
+                                      ].map((item) => {
+                                        const isChecked = editProjStatus === item.value;
+                                        return (
+                                          <label key={item.value} className="flex items-center gap-1.5 cursor-pointer select-none group text-xxs text-slate-755 font-medium leading-none">
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() => setEditProjStatus(item.value)}
+                                              className="accent-amber-500 rounded h-3.5 w-3.5 cursor-pointer"
+                                            />
+                                            <span className="group-hover:text-amber-655 transition-colors leading-normal">
+                                              {item.title}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
 
                                   <div>
@@ -3906,7 +3971,7 @@ export default function App() {
                                       </span>
                                     </div>
                                     <div>
-                                      Inisiator: <span className="font-bold text-slate-600">{p.initializedBy || "Super Admin"}</span>
+                                      Inisiator: <span className="font-bold text-slate-600">{p.initializedBy || "Admin"}</span>
                                     </div>
                                   </div>
                                 </div>
@@ -3944,7 +4009,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 💳 PENGATURAN REKENING BANK PENDANAAN (SUPER ADMIN SETUP) */}
+                {/* 💳 PENGATURAN REKENING BANK PENDANAAN (ADMIN SETUP) */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-bl-full border-b border-l border-slate-100 flex items-center justify-center pointer-events-none">
                     <Coins className="h-6 w-6 text-slate-300" />
@@ -3958,7 +4023,7 @@ export default function App() {
                        Pengaturan Rekening Bank Pendanaan (Tujuan Donasi)
                     </h4>
                     <p className="text-xxs text-slate-500 mt-1 leading-relaxed">
-                      Konfigurasikan seluruh rekening bank resmi, e-wallet, atau wallet address cryptocurrency yang akan ditampilkan di portal donasi publik kami. Super Admin dapat menambahkan rekening, merubah status keaktifan, mengunggah QRIS, atau melakukan revitalisasi data donasi.
+                      Konfigurasikan seluruh rekening bank resmi, e-wallet, atau wallet address cryptocurrency yang akan ditampilkan di portal donasi publik kami. Admin dapat menambahkan rekening, merubah status keaktifan, mengunggah QRIS, atau melakukan revitalisasi data donasi.
                     </p>
                   </div>
 
@@ -4287,15 +4352,28 @@ export default function App() {
 
                       <div>
                         <label className="block text-slate-700 text-xs font-bold mb-1">Tipe Pekerjaan Proyek *</label>
-                        <select
-                          value={newProjType}
-                          onChange={(e: any) => setNewProjType(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
-                        >
-                          <option value="baru">Proyek Baru (Infrastruktur Total)</option>
-                          <option value="renovasi">Renovasi / Pemugaran Bangunan</option>
-                          <option value="alih_fungsi">Alih Fungsi / Relokasi Lahan</option>
-                        </select>
+                        <div className="space-y-1.5 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                          {[
+                            { value: 'baru', title: 'Proyek Baru (Infrastruktur Total)' },
+                            { value: 'renovasi', title: 'Renovasi / Pemugaran Bangunan' },
+                            { value: 'alih_fungsi', title: 'Alih Fungsi / Relokasi Lahan' },
+                          ].map((item) => {
+                            const isChecked = newProjType === item.value;
+                            return (
+                              <label key={item.value} className="flex items-center gap-2 cursor-pointer select-none group text-xs text-slate-700 leading-tight">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => setNewProjType(item.value)}
+                                  className="accent-amber-500 rounded h-4 w-4 cursor-pointer"
+                                />
+                                <span className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">
+                                  {item.title}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div>
@@ -4341,14 +4419,27 @@ export default function App() {
 
                       <div>
                         <label className="block text-slate-700 text-xs font-bold mb-1">Fungsi / Peruntukan & Status Proyek *</label>
-                        <select
-                          value={newProjStatus}
-                          onChange={(e: any) => setNewProjStatus(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
-                        >
-                          <option value="public">Publik (Akses Terbuka & Transparan Penuh)</option>
-                          <option value="private">Privat (Internal Terbatas)</option>
-                        </select>
+                        <div className="space-y-1.5 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                          {[
+                            { value: 'public', title: 'Publik (Akses Terbuka & Transparan Penuh)' },
+                            { value: 'private', title: 'Privat (Internal Terbatas)' },
+                          ].map((item) => {
+                            const isChecked = newProjStatus === item.value;
+                            return (
+                              <label key={item.value} className="flex items-center gap-2 cursor-pointer select-none group text-xs text-slate-700 leading-tight">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => setNewProjStatus(item.value)}
+                                  className="accent-amber-500 rounded h-4 w-4 cursor-pointer"
+                                />
+                                <span className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">
+                                  {item.title}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div>
@@ -4999,15 +5090,28 @@ export default function App() {
                     {/* Method Dropdown */}
                     <div className="flex flex-col space-y-1">
                       <label className="text-slate-600 font-bold font-sans">Pilihan Saluran Transfer *</label>
-                      <select
-                        value={publicDonationMethod}
-                        onChange={(e: any) => setPublicDonationMethod(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-xs focus:ring-1 focus:ring-emerald-600 focus:bg-white focus:outline-none transition"
-                      >
-                        <option value="Bank Transfer">Bank Transfer</option>
-                        <option value="E-Wallet">QRIS/Dompet Digital</option>
-                        <option value="Cash">Tunai</option>
-                      </select>
+                      <div className="flex flex-col gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        {[
+                          { value: 'Bank Transfer', title: 'Transfer Bank (BCA / Mandiri / BSI)' },
+                          { value: 'E-Wallet', title: 'QRIS / Dompet Digital (Gopay / OVO / Dana)' },
+                          { value: 'Cash', title: 'Tunai / Secara Langsung' },
+                        ].map((item) => {
+                          const isChecked = publicDonationMethod === item.value;
+                          return (
+                            <label key={item.value} className="flex items-center gap-2 cursor-pointer select-none group text-xs text-slate-700 font-medium py-0.5">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => setPublicDonationMethod(item.value)}
+                                className="accent-emerald-600 rounded h-4 w-4 cursor-pointer"
+                              />
+                              <span className="group-hover:text-emerald-700 transition-colors leading-normal">
+                                {item.title}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {/* Image Verification Proof */}
