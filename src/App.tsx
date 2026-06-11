@@ -2395,25 +2395,26 @@ export default function App() {
                             className="text-xs border border-slate-200 rounded px-3 py-1.5 pl-8 w-full md:w-44 bg-white focus:outline-hidden focus:border-emerald-600"
                           />
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 shadow-2xs">
+                        <div className="bg-slate-100/80 border border-slate-200/60 p-1 rounded-full flex items-center gap-1 shadow-2xs">
                           {[
-                            { value: 'all', title: 'Semua Aktivitas' },
-                            { value: 'donations', title: 'Hanya Donasi' },
-                            { value: 'expenditures', title: 'Hanya Belanja/Pengeluaran' },
+                            { value: 'donations', title: 'Donasi' },
+                            { value: 'expenditures', title: 'Belanja' },
+                            { value: 'all', title: 'Semua' },
                           ].map((item) => {
-                            const isChecked = ledgerFilter === item.value;
+                            const isActive = ledgerFilter === item.value;
                             return (
-                              <label key={item.value} className="flex items-center gap-1.5 cursor-pointer select-none group text-xxs font-semibold text-slate-600 leading-none">
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => setLedgerFilter(item.value as any)}
-                                  className="accent-emerald-600 rounded-sm h-3.5 w-3.5 cursor-pointer"
-                                />
-                                <span className="group-hover:text-emerald-700 transition-colors">
-                                  {item.title}
-                                </span>
-                              </label>
+                              <button
+                                key={item.value}
+                                type="button"
+                                onClick={() => setLedgerFilter(item.value as any)}
+                                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 select-none cursor-pointer ${
+                                  isActive
+                                    ? 'bg-white border border-blue-600 text-slate-900 shadow-xs'
+                                    : 'border border-transparent text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                {item.title}
+                              </button>
                             );
                           })}
                         </div>
