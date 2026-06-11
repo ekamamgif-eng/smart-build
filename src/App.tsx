@@ -62,6 +62,7 @@ import {
 import { ImageUploader } from "./components/ImageUploader";
 import { jsPDF } from "jspdf";
 import GoogleDriveSheetsSync from "./components/GoogleWorkspaceIntegration";
+import CostForecastingView from "./components/CostForecastingView";
 // @ts-ignore
 import projectLogo from "./assets/images/smart_build_flat_logo_1780652826297.png";
 
@@ -162,7 +163,7 @@ const getBase64Image = (imgUrl: string): Promise<string> => {
 
 export default function App() {
   // Navigation
-  const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "setting">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "treasurer" | "pm" | "setting" | "forecasting">("dashboard");
   const [settingSubTab, setSettingSubTab] = useState<"project" | "rekening" | "google" | "keamanan">("project");
   const [googleToken, setGoogleTokenState] = useState<string | null>(() => localStorage.getItem("google_access_token"));
   const setGoogleToken = (token: string | null) => {
@@ -1989,6 +1990,16 @@ export default function App() {
           >
             Manajer Proyek
           </button>
+          <button
+            onClick={() => setActiveTab("forecasting")}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 ${
+              activeTab === "forecasting"
+                ? "bg-white text-emerald-600 shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            Prakiraan Biaya
+          </button>
           {currentUser?.role === 'ADMIN' && (
             <button
               onClick={() => setActiveTab("setting")}
@@ -2085,6 +2096,14 @@ export default function App() {
           }`}
         >
           Manajer Proyek
+        </button>
+        <button
+          onClick={() => setActiveTab("forecasting")}
+          className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+            activeTab === "forecasting" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-700"
+          }`}
+        >
+          Prakiraan Biaya
         </button>
         {currentUser?.role === 'ADMIN' && (
           <button
@@ -3520,6 +3539,17 @@ export default function App() {
             )}
 
 
+
+            {activeTab === "forecasting" && (
+              <div className="max-w-6xl mx-auto md:pb-12">
+                <CostForecastingView
+                  expenditures={expenditures}
+                  donations={donations}
+                  projectConfig={summary?.projectConfig}
+                  physicalProgressPercent={summary?.physicalProgressPercent || 0}
+                />
+              </div>
+            )}
 
             {activeTab === "setting" && currentUser?.role === "ADMIN" && (
               <div className="space-y-6 max-w-6xl mx-auto md:pb-12">
