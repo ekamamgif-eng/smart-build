@@ -279,7 +279,7 @@ export default function CostForecastingView({
               <TrendingUp className="h-3 w-3 text-emerald-600 shrink-0" />
               Sistem Prediksi Akuntabilitas Kas
             </span>
-            <h3 className="text-lg sm:text-xl font-extrabold text-slate-800 tracking-tight mt-1.5">
+            <h3 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight mt-1.5">
               Prakiraan Biaya Konstruksi & Alokasi RAB
             </h3>
             <p className="text-xxs sm:text-xs text-slate-400 mt-0.5">
@@ -315,7 +315,7 @@ export default function CostForecastingView({
       </div>
 
       {/* METRICS ROW */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
         {/* CARD 1: BUDGET TARGET */}
         <div className="bg-white p-3 sm:p-4 lg:p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
@@ -503,9 +503,9 @@ export default function CostForecastingView({
           </div>
 
           <div className="space-y-4 text-xxs font-sans">
-            <div>
-              <p className="font-bold text-slate-650 mb-1">Model Prediksi Aktif</p>
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-1 rounded-lg border border-slate-200/50">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="font-bold text-slate-500 text-[9px] uppercase tracking-wider shrink-0">Model Prediksi Aktif</p>
+              <div className="grid grid-cols-2 gap-1 bg-slate-50 p-0.5 rounded-lg border border-slate-200/50 text-[11px] w-[200px] max-w-full shrink-0">
                 <button
                   type="button"
                   onClick={() => {

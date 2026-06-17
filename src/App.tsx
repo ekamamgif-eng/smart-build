@@ -63,8 +63,7 @@ import { ImageUploader } from "./components/ImageUploader";
 import { jsPDF } from "jspdf";
 import GoogleDriveSheetsSync from "./components/GoogleWorkspaceIntegration";
 import CostForecastingView from "./components/CostForecastingView";
-// @ts-ignore
-import projectLogo from "./assets/images/smart_build_flat_logo_1780652826297.png";
+const projectLogo = "https://res.cloudinary.com/df8ucbrge/image/upload/smart_build_flat_logo_b9rczk.png";
 
 export const resolveReceiptUrl = (url: string | null): string => {
   if (!url) return "";
@@ -2010,7 +2009,7 @@ export default function App() {
               }`}
             >
               <Cog className="h-3.5 w-3.5 text-amber-500" />
-              <span>Pengaturan Admin</span>
+              <span>Setting</span>
             </button>
           )}
         </nav>
@@ -2113,7 +2112,7 @@ export default function App() {
             }`}
           >
             <Cog className="h-3.5 w-3.5" />
-            <span>Pengaturan</span>
+            <span>Setting</span>
           </button>
         )}
       </div>
@@ -2286,7 +2285,7 @@ export default function App() {
                         {formatCurrency(summary?.currentCashBalance ?? 0)}
                       </h2>
                       <p className="text-[10px] mt-[18px] text-emerald-700/60 font-bold uppercase tracking-widest">
-                        Log Transaksi Terproteksi & Akuntabel
+                        Catatan Transaksi Aman & Terverifikasi
                       </p>
                     </div>
                   </div>
@@ -2298,9 +2297,9 @@ export default function App() {
                     <Sparkles className="h-4.5 w-4.5" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-widest leading-none">Pernyataan Komitmen Transparansi Publik</h3>
-                    <p className="text-emerald-700 text-xxs mt-1 font-medium leading-relaxed">
-                      Seluruh material konstruksi, upah pekerja lapang, dan donasi jamaah/masyarakat divalidasi langsung dalam database buku kas transparan di bawah ini. Silakan klik baris transaksi apa pun untuk menginspeksi foto bukti transfer bank atau lembar nota kuitansi fisik toko asli.
+                    <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-widest leading-none">Komitmen Transparansi</h3>
+                    <p className="text-emerald-700 text-xs mt-1 font-medium leading-relaxed">
+                      Data material, upah pekerja, dan donasi warga tercatat langsung di buku kas online ini. Silakan klik baris transaksi untuk melihat foto bukti transfer atau kuitansi aslinya.
                     </p>
                   </div>
                 </div>
@@ -2313,8 +2312,8 @@ export default function App() {
                         <Coins className="h-4.5 w-4.5" />
                       </div>
                       <div>
-                        <h3 className="font-extrabold text-slate-800 text-sm">Tren Akumulasi & Mutasi Bulanan</h3>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Visualisasi perbandingan total donasi masuk vs belanja pengeluaran</p>
+                        <h3 className="font-extrabold text-slate-800 text-sm">Arus Kas Bulanan</h3>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Visualisasi total donasi masuk vs pengeluaran proyek.</p>
                       </div>
                     </div>
                     {/* Inline chart legend */}
@@ -2401,7 +2400,7 @@ export default function App() {
                     <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
                       <div className="min-w-0">
                         <h3 className="font-bold text-slate-700 truncate sm:whitespace-normal">Buku Transparansi Kas Publik</h3>
-                        <p className="text-[10px] text-slate-550 font-semibold uppercase tracking-wider leading-relaxed mt-1 sm:whitespace-normal">Snapshot riwayat mutasi dari database cloud terverifikasi</p>
+                        <p className="text-[8px] text-slate-550 font-semibold uppercase tracking-wider leading-relaxed mt-1 sm:whitespace-normal">RIWAYAT TRANSAKSI TERVERIFIKASI</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
                         <div className="relative flex-1 min-w-[140px] md:flex-none">
@@ -2512,7 +2511,7 @@ export default function App() {
                     <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
                       <span className="text-xs font-bold text-slate-400 font-mono uppercase tracking-wider flex items-center justify-center gap-1.5">
                         <Lock className="h-3.5 w-3.5 text-slate-450 shrink-0" />
-                        <span>INTEGRITAS DATA MUTASI AUDIT DENGAN TRANSAKSI FISIK TERVERIFIKASI</span>
+                        <span>Kecocokan Data Transaksi dan Bukti Fisik</span>
                       </span>
                     </div>
                   </div>
@@ -4754,15 +4753,14 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 text-center space-y-3">
           <div className="flex justify-center items-center space-x-2 text-white">
             <Building2 className="h-5 w-5 text-emerald-500" />
-            <span className="font-bold text-sm tracking-widest uppercase">SmartBuild Transparency</span>
+            <span className="font-bold text-[12px] tracking-widest uppercase">Arsitektur Sistem Aman & Transparan</span>
           </div>
-          <p className="text-xxs font-mono text-slate-500">
-            Secure Fullstack Architecture Blueprint <br />
-            Created for verified public trust, accountability, and real-time physical development summaries.
+          <p className="text-[12px] leading-[22px] font-mono text-slate-500">
+            Fondasi digital untuk akuntabilitas publik dan laporan fisik pembangunan yang instan.
           </p>
-          <div className="text-xxs text-slate-600 flex flex-col sm:flex-row justify-center items-center gap-2">
-            <span>© {systemInfo.year} SmartBuild Initiative. Standard GPL-v2 License. Auditable code distribution.</span>
-            <span className="bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-2 py-0.5 rounded font-mono text-xxs font-medium">
+          <div className="text-[12px] leading-[23px] text-slate-600 flex flex-col sm:flex-row justify-center items-center gap-2">
+            <span>© 2026 SmartBuild Initiative. Berlisensi GPL-v2 (Kode Terbuka & Dapat Diaudit).</span>
+            <span className="bg-emerald-950/60 text-[#68857c] border-0 px-2 py-0.5 rounded font-mono text-[10px] leading-[22px] font-medium">
               v{systemInfo.version}
             </span>
           </div>
@@ -5090,15 +5088,27 @@ export default function App() {
                         required={!publicDonorIsAnon}
                         className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg text-xs focus:ring-1 focus:ring-emerald-600 focus:bg-white focus:outline-none disabled:opacity-40 transition font-sans"
                       />
-                      <div className="flex items-center space-x-1.5 pt-1">
-                        <input 
-                          type="checkbox"
-                          id="publicAnon"
-                          checked={publicDonorIsAnon}
-                          onChange={(e) => setPublicDonorIsAnon(e.target.checked)}
-                          className="rounded text-emerald-600 border-slate-300 w-3.5 h-3.5 cursor-pointer"
-                        />
-                        <label htmlFor="publicAnon" className="text-xxs text-slate-500 select-none cursor-pointer">Sembunyikan nama (Hamba Allah)</label>
+                      <div className="flex items-center space-x-3 pt-1">
+                        <label className="flex items-center gap-1 cursor-pointer select-none text-xxs text-slate-500 hover:text-slate-800 transition-colors">
+                          <input 
+                            type="radio"
+                            name="donorAnon"
+                            checked={!publicDonorIsAnon}
+                            onChange={() => setPublicDonorIsAnon(false)}
+                            className="accent-emerald-600 h-3.5 w-3.5 cursor-pointer"
+                          />
+                          <span>Tampilkan Nama</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer select-none text-xxs text-slate-500 hover:text-slate-800 transition-colors">
+                          <input 
+                            type="radio"
+                            name="donorAnon"
+                            checked={publicDonorIsAnon}
+                            onChange={() => setPublicDonorIsAnon(true)}
+                            className="accent-emerald-600 h-3.5 w-3.5 cursor-pointer"
+                          />
+                          <span>Sembunyikan nama (Hamba Allah)</span>
+                        </label>
                       </div>
                     </div>
 
