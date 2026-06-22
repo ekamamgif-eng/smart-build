@@ -639,16 +639,62 @@ async function ensurePostgresUsers() {
   const prisma = await getPrismaClient();
   if (!prisma) return;
   try {
-    const count = await prisma.user.count();
-    if (count === 0) {
-      const usersToSeed = [
-        {
+    // Proactively clean up any rogue or self-registered admin users other than our legitimate one
+    await prisma.user.deleteMany({
+      where: {
+        role: "ADMIN",
+        email: { not: "admin@pintarbangun.vercel.app" }
+      }
+    });
+
+    // Also sanitize in-memory JSON state db.users if it contains rogue admins
+    const db = getDBState();
+    if (db && db.users) {
+      const originalLength = db.users.length;
+      db.users = db.users.filter((u: any) => !(u.role === "ADMIN" && u.email.toLowerCase() !== "admin@pintarbangun.vercel.app"));
+      if (db.users.length !== originalLength) {
+        saveDBState(db);
+      }
+    }
+
+    // Explicitly guarantee the existence of our Super Admin
+    const adminExists = await prisma.user.findUnique({
+      where: { email: "admin@pintarbangun.vercel.app" }
+    });
+
+    if (!adminExists) {
+      await prisma.user.create({
+        data: {
           id: "user-admin",
           email: "admin@pintarbangun.vercel.app",
           name: "Rudi P",
           role: "ADMIN" as any,
           password: bcrypt.hashSync("admin", 10)
-        },
+        }
+      });
+      console.log("Super Admin seeded successfully on the fly!");
+    }
+
+    // Keep memory DB in sync
+    if (db && db.users) {
+      const memoryAdminExists = db.users.some((u: any) => u.email.toLowerCase() === "admin@pintarbangun.vercel.app");
+      if (!memoryAdminExists) {
+        db.users.push({
+          id: "user-admin",
+          email: "admin@pintarbangun.vercel.app",
+          name: "Rudi P",
+          role: "ADMIN" as any,
+          password: bcrypt.hashSync("admin", 10),
+          createdAt: new Date().toISOString()
+        });
+        saveDBState(db);
+      }
+    }
+
+    // If only our Super Admin exists (count = 1), let's pre-seed the helper fallback users
+    const count = await prisma.user.count();
+    if (count === 1) {
+      const usersToSeed = [
         {
           id: "user-treasurer",
           email: "bendahara@masjid.id",
@@ -1540,7 +1586,11 @@ app.post("/api/auth/register", async (req, res) => {
     return res.status(400).json({ error: "Missing required fields (email, password, name)." });
   }
 
-  const assignedRole = role && ["ADMIN", "TREASURER", "PROJECT_MANAGER"].includes(role) ? role : "TREASURER";
+  if (role === "ADMIN") {
+    return res.status(400).json({ error: "Pendaftaran sebagai administrator baru via API publik dilarang demi keamanan." });
+  }
+
+  const assignedRole = role && ["TREASURER", "PROJECT_MANAGER"].includes(role) ? role : "TREASURER";
 
   try {
     const existingUser = await findUserByEmail(email);
@@ -2361,11 +2411,11 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
     db.projects.push({ ...db.projectConfig });
 
     // 3. Establish Treasurer and Project Manager users
-    // If startFresh is true, we keep only Admin users from old state. 
+    // If startFresh is true, we keep only our legitimate original Admin active.
     // If FALSE, we keep ALL existing users, but filter out anyway if their email conflicts with our new team to prevent bugs.
     let remainingUsers = [];
     if (startFresh) {
-      remainingUsers = db.users.filter((user: any) => user.role === "ADMIN");
+      remainingUsers = db.users.filter((user: any) => user.role === "ADMIN" && user.email.toLowerCase() === "admin@pintarbangun.vercel.app");
     } else {
       remainingUsers = db.users.filter((user: any) => 
         user.email !== treasurerEmail.toLowerCase() && 
@@ -2422,7 +2472,14 @@ app.post("/api/project-config/initialize", authenticateToken, requireRole(["ADMI
           await prisma.budget.deleteMany({});
           await prisma.projectConfig.deleteMany({});
           await prisma.project.deleteMany({});
-          await prisma.user.deleteMany({ where: { role: { in: ["TREASURER", "PROJECT_MANAGER"] } } });
+          await prisma.user.deleteMany({
+            where: {
+              OR: [
+                { role: { in: ["TREASURER", "PROJECT_MANAGER"] } },
+                { role: "ADMIN", email: { not: "admin@pintarbangun.vercel.app" } }
+              ]
+            }
+          });
         } else {
           // If not starting fresh, only delete conflicting email records from User table
           await prisma.user.deleteMany({
@@ -3363,6 +3420,9 @@ app.get(["/oauth-callback", "/oauth-callback/"], (req, res) => {
 
 // Setup development devServer or production asset pipelines
 async function startServer() {
+  // Purge any rogue admins and guarantee system user integrity on startup
+  await ensurePostgresUsers().catch(err => console.error("Startup User Sync error:", err));
+
   // Run self-healing database migration for any pre-existing/orphaned default data
   await healDatabaseOrphanedProjects().catch(err => console.error("Startup HealDB error:", err));
 
