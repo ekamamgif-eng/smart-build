@@ -3451,6 +3451,7 @@ async function startServer() {
           res.setHeader("Content-Type", "application/javascript");
           res.end(`
             const noop = () => {};
+            const styleNodes = new Map();
             export const createHotContext = () => ({
               accept: noop,
               dispose: noop,
@@ -3459,8 +3460,23 @@ async function startServer() {
               on: noop,
               send: noop,
             });
-            export const updateStyle = noop;
-            export const removeStyle = noop;
+            export const updateStyle = (id, css) => {
+              let style = styleNodes.get(id);
+              if (!style) {
+                style = document.createElement('style');
+                style.setAttribute('data-vite-dev-id', id);
+                document.head.appendChild(style);
+                styleNodes.set(id, style);
+              }
+              style.textContent = css;
+            };
+            export const removeStyle = (id) => {
+              const style = styleNodes.get(id);
+              if (style) {
+                style.remove();
+                styleNodes.delete(id);
+              }
+            };
             export const injectQuery = (url) => url;
           `);
           return;
