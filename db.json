@@ -42,5 +42,94 @@
     "initialized": true,
     "initializedAt": "2026-05-10T14:30:00Z"
   },
-  "projects": []
+  "projects": [
+    {
+      "id": "project-default",
+      "name": "Proyek Utama Pembangunan Masjid At-Taqwa",
+      "type": "renovasi",
+      "fundingSource": "donasi",
+      "status": "public",
+      "projectStatus": "berjalan",
+      "budget": 1600000000,
+      "description": "Pembangunan dan perluasan kapasitas ibadah utama serta fasilitas dakwah Masjid At-Taqwa.",
+      "initializedBy": "Super Admin",
+      "initializedAt": "2026-05-10T14:30:00Z"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "ms-1",
+      "title": "Pembersihan Lahan & Pengukuran Konstruksi",
+      "expectedDate": "2026-05-15",
+      "category": "Foundation",
+      "status": "COMPLETED",
+      "progressNotes": "Lahan telah dibersihkan sepenuhnya dan batas fondasi telah dipasang."
+    },
+    {
+      "id": "ms-2",
+      "title": "Pengecoran Fondasi Cakar Ayam & Sloof Beton",
+      "expectedDate": "2026-06-25",
+      "category": "Foundation",
+      "status": "ON_GOING",
+      "progressNotes": "Pekerjaan anyaman besi cakar ayam sedang berlangsung."
+    },
+    {
+      "id": "ms-3",
+      "title": "Konstruksi Tiang Kolom Struktur Lantai Satu",
+      "expectedDate": "2026-08-15",
+      "category": "Structure",
+      "status": "PENDING",
+      "progressNotes": "Persiapan cetakan bekisting tiang kolom."
+    },
+    {
+      "id": "ms-4",
+      "title": "Pemasangan Rangka Baja & Kubah Utama",
+      "expectedDate": "2026-10-10",
+      "category": "Roofing",
+      "status": "PENDING",
+      "progressNotes": "Pabrikasi kubah di bengkel eksternal."
+    },
+    {
+      "id": "ms-5",
+      "title": "Instalasi Kelistrikan & Plambing Interior (MEP)",
+      "expectedDate": "2026-11-20",
+      "category": "MEP",
+      "status": "PENDING",
+      "progressNotes": "Menunggu selesainya dinding bata."
+    },
+    {
+      "id": "ms-6",
+      "title": "Finishing Marmer Dinding Mihrab & Lantai Utama",
+      "expectedDate": "2026-12-25",
+      "category": "Finishing",
+      "status": "PENDING",
+      "progressNotes": "Pemilihan marmer impor telah disetujui panitia."
+    }
+  ],
+  "bankAccounts": [
+    {
+      "id": "bank-1",
+      "bankName": "BCA",
+      "accountNumber": "869-041-2026",
+      "accountHolder": "PANITIA PEMBANGUNAN UTAMA",
+      "qrCodeUrl": "",
+      "isActive": true
+    },
+    {
+      "id": "bank-2",
+      "bankName": "MANDIRI",
+      "accountNumber": "131-00-2026-0606",
+      "accountHolder": "REKENING KAS IMAM MASJID",
+      "qrCodeUrl": "",
+      "isActive": true
+    },
+    {
+      "id": "bank-3",
+      "bankName": "USDT",
+      "accountNumber": "TX9z4k1fLzW6v22E54RaUh9435b674b3Pq",
+      "accountHolder": "TRC20 Wallet Address",
+      "qrCodeUrl": "",
+      "isActive": true
+    }
+  ]
 }
