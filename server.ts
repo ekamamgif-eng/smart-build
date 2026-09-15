@@ -3432,9 +3432,25 @@ async function startServer() {
       // Express owns the HTTP server, so it cannot forward Vite's HMR upgrade
       // requests. Disable HMR to prevent the injected client from retrying a
       // WebSocket that can never complete its handshake in this setup.
-      server: { middlewareMode: true, hmr: false },
-      appType: "spa",
-    });
+      server: {
+    middlewareMode: true,
+    hmr: false,
+    // Express owns the listener and does not expose Vite's HMR upgrade path.
+    // Disable file watching as well so Vite cannot emit a client that retries
+    // a WebSocket which this server cannot complete.
+    watch: null,
+  },
+  appType: "spa",
+  plugins: [{
+    name: "disable-vite-client-in-express-mode",
+    transformIndexHtml: {
+      order: "post",
+      handler(html: string) {
+        return html.replace(/<script[^>]+src=["']\/@vite\/client["'][^>]*><\/script>/g, "");
+      },
+    },
+  }],
+  });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
