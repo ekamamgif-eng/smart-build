@@ -3440,17 +3440,37 @@ async function startServer() {
     // a WebSocket which this server cannot complete.
     watch: null,
   },
-  appType: "spa",
+  appType: "custom",
   plugins: [{
     name: "disable-vite-client-in-express-mode",
-    transformIndexHtml: {
-      order: "post",
-      handler(html: string) {
-        return html.replace(/<script[^>]+src=["']\/@vite\/client["'][^>]*><\/script>/g, "");
-      },
+    enforce: "post",
+    configureServer(server: { middlewares: { use: (handler: (req: any, res: any, next: () => void) => void) => void } }) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url === "/@vite/client") {
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/javascript");
+          res.end("export {};" );
+          return;
+        }
+        next();
+      });
+    },
+    transformIndexHtml(html: string) {
+      return html.replace(
+        /<script\b[^>]*\bsrc=["']\/?(?:@vite\/client|@react-refresh)["'][^>]*><\/script>/gi,
+        "",
+      );
     },
   }],
   });
+    app.use((req, res, next) => {
+      if (req.method === "GET" && req.headers.accept?.includes("text/html") && !req.path.startsWith("/api")) {
+        const indexPath = path.join(process.cwd(), "index.html");
+        res.type("html").send(fs.readFileSync(indexPath, "utf8"));
+        return;
+      }
+      next();
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
