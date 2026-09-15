@@ -1939,9 +1939,9 @@ export default function App() {
   const balancedCash = totalRaisedApproved - totalSpent;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col antialiased">
+    <div className="min-h-screen text-slate-900 font-sans flex flex-col antialiased">
       {/* Top Navigation & Global Identity */}
-      <header className="sticky top-0 z-40 h-16 lg:h-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 flex-shrink-0 shadow-xs">
+      <header className="sticky top-0 z-40 h-16 lg:h-20 bg-white/80 border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 flex-shrink-0 shadow-xs backdrop-blur-xl">
         {/* Left Side: Branding */}
         <div className="flex items-center gap-2.5 cursor-pointer flex-shrink-0" onClick={() => setActiveTab("dashboard")}>
           <img 
@@ -2134,7 +2134,7 @@ export default function App() {
               <div className="space-y-6">
 
                 {/* Dashboard Page Title Section */}
-                <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="relative overflow-hidden bg-white rounded-2xl border border-slate-200 shadow-xs p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-5">
                   <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                       {summary?.projectConfig?.initialized && summary?.projectConfig?.name 

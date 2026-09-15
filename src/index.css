@@ -4,4 +4,105 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-brand-ink: #14251f;
+  --color-brand-mint: #0f9f78;
+  --color-brand-violet: #7667f2;
+  --color-brand-sky: #77c7df;
+}
+
+:root {
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  background: #f6f8f7;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(119, 199, 223, 0.18), transparent 28rem),
+    radial-gradient(circle at 92% 4%, rgba(118, 103, 242, 0.14), transparent 30rem),
+    #f6f8f7;
+  color: #14251f;
+}
+
+button, select, input, textarea {
+  font: inherit;
+}
+
+/* SmartBuild visual language: soft surfaces, restrained borders, and warm brand accents. */
+#root > div.min-h-screen {
+  background: transparent;
+}
+
+#root > div.min-h-screen > header {
+  background: rgba(255, 255, 255, 0.84);
+  border-color: rgba(20, 37, 31, 0.08);
+  box-shadow: 0 1rem 3rem rgba(20, 37, 31, 0.06);
+  backdrop-filter: blur(18px);
+}
+
+#root > div.min-h-screen > header h1 span {
+  background: linear-gradient(120deg, #0b8f6b, #7667f2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+#root > div.min-h-screen nav {
+  background: rgba(235, 242, 240, 0.76);
+  border: 1px solid rgba(20, 37, 31, 0.06);
+}
+
+#root > div.min-h-screen nav button[class*="bg-white"] {
+  background: linear-gradient(135deg, #ffffff, #effcf7);
+  color: #087957;
+  box-shadow: 0 0.4rem 1rem rgba(15, 159, 120, 0.12);
+}
+
+#root > div.min-h-screen main {
+  max-width: 80rem;
+}
+
+#root > div.min-h-screen main > div > div:first-child,
+#cost-forecasting-container > div:first-child {
+  background: linear-gradient(135deg, rgba(255,255,255,.94), rgba(239,252,247,.9) 58%, rgba(238,235,255,.78));
+  border-color: rgba(15, 159, 120, 0.16);
+  box-shadow: 0 1.25rem 3rem rgba(20, 37, 31, 0.08);
+}
+
+#root > div.min-h-screen main .bg-white,
+#cost-forecasting-container .bg-white {
+  border-color: rgba(20, 37, 31, 0.09);
+  box-shadow: 0 0.75rem 2rem rgba(20, 37, 31, 0.045);
+}
+
+#root > div.min-h-screen main .rounded-xl,
+#root > div.min-h-screen main .rounded-2xl,
+#cost-forecasting-container .rounded-2xl {
+  border-radius: 1.15rem;
+}
+
+#root > div.min-h-screen main h1,
+#root > div.min-h-screen main h2,
+#root > div.min-h-screen main h3,
+#cost-forecasting-container h3,
+#cost-forecasting-container h4 {
+  letter-spacing: -0.025em;
+}
+
+@media (max-width: 1023px) {
+  #root > div.min-h-screen > header {
+    position: sticky;
+  }
+}
+
+@media (max-width: 640px) {
+  #root > div.min-h-screen main {
+    padding: 1rem;
+  }
 }
