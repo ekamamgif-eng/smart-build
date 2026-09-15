@@ -3449,7 +3449,20 @@ async function startServer() {
         if (req.url === "/@vite/client") {
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/javascript");
-          res.end("export {};" );
+          res.end(`
+            const noop = () => {};
+            export const createHotContext = () => ({
+              accept: noop,
+              dispose: noop,
+              prune: noop,
+              invalidate: noop,
+              on: noop,
+              send: noop,
+            });
+            export const updateStyle = noop;
+            export const removeStyle = noop;
+            export const injectQuery = (url) => url;
+          `);
           return;
         }
         next();

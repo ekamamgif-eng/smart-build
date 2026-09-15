@@ -6,7 +6,7 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [
-      react(),
+      react({ fastRefresh: false }),
       tailwindcss(),
       {
         name: 'disable-vite-client-in-express-mode',
