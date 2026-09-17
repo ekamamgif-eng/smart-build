@@ -42,7 +42,7 @@ async function getPrismaClient() {
   return _prisma;
 }
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Resolve local directory path constants safely for both CommonJS and ES Module environments
 const __dirname = process.cwd();
@@ -1629,17 +1629,13 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   try {
-    console.log("[LOGIN_DEBUG] Attempting login for email:", email);
     const user = await findUserByEmail(email);
-    console.log("[LOGIN_DEBUG] findUserByEmail returned:", user ? { ...user, password: "[HIDDEN]" } : null);
 
     if (!user) {
-      console.log("[LOGIN_DEBUG] User not found");
       return res.status(401).json({ error: "Email atau kata sandi Anda salah." });
     }
 
     const passwordsMatch = bcrypt.compareSync(password, user.password);
-    console.log("[LOGIN_DEBUG] Password match result:", passwordsMatch);
 
     if (!passwordsMatch) {
       return res.status(401).json({ error: "Email atau kata sandi Anda salah." });

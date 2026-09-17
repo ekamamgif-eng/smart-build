@@ -1,20 +1,68 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# SmartBuild — Portal Transparansi Proyek & Buku Kas Rumah Ibadah
 
-# Run and deploy your AI Studio app
+Sistem manajemen proyek dan pelacakan anggaran transparan berbasis web yang dirancang khusus untuk panitia pembangunan, bendahara, project manager, dan publik/donatur.
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/d280322f-ac86-44a2-8755-fae5e308a4b3
+## Fitur Utama
 
-## Run Locally
+- **Transparansi Buku Kas Publik**: Pelacakan donasi masuk, mutasi pengeluaran, serta bukti transfer & nota secara terbuka.
+- **Manajemen RAB (Rencana Anggaran Biaya)**: Monitoring serapan dana per kategori pekerjaan (Fondasi, Struktur, Kubah/Atap, MEP, Finishing, dll).
+- **Progres Fisik & Lini Masa**: Pencatatan kurva kemajuan konstruksi dilengkapi foto dokumentasi lapangan.
+- **Integrasi Google Workspace**: Ekspor & sinkronisasi otomatis ke Google Sheets serta arsip bukti nota di Google Drive.
+- **Prakiraan Biaya (Cost Forecasting)**: Analisis deviasi anggaran dan proyeksi biaya penyelesaian berbasis data pengeluaran aktual.
+- **Keamanan & Audit Trail**: Autentikasi berbasis peran (Admin, Bendahara, Project Manager) dan pencatatan riwayat audit (Audit Log).
 
-**Prerequisites:**  Node.js
+---
 
+## Persyaratan Sistem
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- **Node.js**: Versi 18 ke atas
+- **Database**: PostgreSQL (opsional untuk production, default SQLite/JSON fallback)
+- **Cloudinary / Google Drive**: Untuk penyimpanan berkas bukti transfer / foto kemajuan proyek
+
+---
+
+## Menjalankan Secara Lokal
+
+1. **Instal dependensi**:
+   ```bash
+   npm install
+   ```
+
+2. **Siapkan berkas konfigurasi lingkungan**:
+   Salin berkas `.env.example` menjadi `.env` lalu sesuaikan isinya:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Inisialisasi Prisma Client**:
+   ```bash
+   npx prisma generate
+   ```
+
+4. **Jalankan aplikasi (Development)**:
+   ```bash
+   npm run dev
+   ```
+   Aplikasi akan berjalan di `http://localhost:3000` (atau port yang disetel di `.env`).
+
+---
+
+## Build untuk Production
+
+1. **Build bundle frontend & backend**:
+   ```bash
+   npm run build
+   ```
+
+2. **Jalankan production server**:
+   ```bash
+   npm start
+   ```
+
+---
+
+## Lisensi & Hak Cipta
+
+© 2026 SmartBuild Initiative.
