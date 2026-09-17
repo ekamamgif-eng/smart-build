@@ -2643,7 +2643,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 app.get("/api/financial-summary", async (req, res) => {
   try {
     const targetProjectId = await getTargetProjectId(req);
-    await healDatabaseOrphanedProjects();
     const [donations, expenditures, budgets, progress] = await Promise.all([
       getDonations(targetProjectId),
       getExpenditures(targetProjectId),

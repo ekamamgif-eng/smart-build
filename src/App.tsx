@@ -194,7 +194,7 @@ export default function App() {
   const isTreasurerAuthenticated = currentUser !== null && (currentUser.role === 'TREASURER' || currentUser.role === 'ADMIN');
   const isPmAuthenticated = currentUser !== null && (currentUser.role === 'PROJECT_MANAGER' || currentUser.role === 'ADMIN');
 
-  // Core Data States
+  // Core Data States with Instant Cache
   const [summary, setSummary] = useState<{
     totalRaised: number;
     totalRABTarget: number;
@@ -216,15 +216,45 @@ export default function App() {
       initializedAt?: string;
       initializedBy?: string;
     };
-  } | null>(null);
+  } | null>(() => {
+    try {
+      const cached = localStorage.getItem("sb_cache_summary");
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
 
-  const [donations, setDonations] = useState<Donation[]>([]);
-  const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
-  const [progressLog, setProgressLog] = useState<PhysicalProgress[]>([]);
+  const [donations, setDonations] = useState<Donation[]>(() => {
+    try {
+      const cached = localStorage.getItem("sb_cache_donations");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [expenditures, setExpenditures] = useState<Expenditure[]>(() => {
+    try {
+      const cached = localStorage.getItem("sb_cache_expenditures");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [progressLog, setProgressLog] = useState<PhysicalProgress[]>(() => {
+    try {
+      const cached = localStorage.getItem("sb_cache_progress");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    return !localStorage.getItem("sb_cache_summary");
+  });
   const [systemInfo, setSystemInfo] = useState<{ version: string; year: number }>({
     version: "2.0.0",
     year: new Date().getFullYear(),
@@ -360,55 +390,71 @@ export default function App() {
     }
   };
 
-  // Fetch core data from full-stack APIs
+  // Fetch core data from full-stack APIs with priority batching
   const fetchAllData = async (tokenOverride?: string | null, forceProjectId?: string) => {
     try {
-      setLoading(true);
+      // Only show full blocking loader if we don't have cached data yet
+      if (!summary) {
+        setLoading(true);
+      }
       const activeToken = tokenOverride !== undefined ? tokenOverride : authToken;
       const headersOpt = activeToken ? { "Authorization": `Bearer ${activeToken}` } : {};
       
       const projIdToUse = forceProjectId !== undefined ? forceProjectId : selectedProjectId;
       const q = projIdToUse ? `?projectId=${projIdToUse}` : "";
 
-      // Fetch public projects and visibility mode in parallel
+      // Fetch public projects and visibility mode in parallel (non-blocking)
       fetchPublicProjects();
       fetchVisibilitySettings();
 
-      const [sumRes, donRes, expRes, progRes, auditRes, sysRes, mileRes, bankRes] = await Promise.all([
+      // Priority 1: Primary financial metrics needed for immediate dashboard rendering
+      const [sumRes, donRes, expRes] = await Promise.all([
         fetch(`/api/financial-summary${q}`, { headers: headersOpt }),
         fetch(`/api/donations${q}`, { headers: headersOpt }),
-        fetch(`/api/expenditures${q}`, { headers: headersOpt }),
-        fetch(`/api/progress${q}`, { headers: headersOpt }),
-        fetch(`/api/audit-logs${q}`, { headers: headersOpt }),
-        fetch("/api/system-info"),
-        fetch(`/api/milestones${q}`, { headers: headersOpt }),
-        fetch("/api/bank-accounts")
+        fetch(`/api/expenditures${q}`, { headers: headersOpt })
       ]);
 
-      const sumData = await sumRes.json();
-      const donData = await donRes.json();
-      const expData = await expRes.json();
-      const progData = await progRes.json();
-      const auditData = await auditRes.json();
-      const mileData = mileRes.ok ? await mileRes.json() : [];
-      const bankData = bankRes.ok ? await bankRes.json() : [];
-      let sysData = { version: "2.0.0", year: new Date().getFullYear() };
-      try {
-        if (sysRes.ok) {
-          sysData = await sysRes.json();
-        }
-      } catch (e) {
-        console.error("Error parsing system-info", e);
-      }
+      const [sumData, donData, expData] = await Promise.all([
+        sumRes.json(),
+        donRes.json(),
+        expRes.json()
+      ]);
 
       setSummary(sumData);
       setDonations(donData);
       setExpenditures(expData);
-      setProgressLog(progData);
-      setAuditLogs(auditData);
-      setMilestones(mileData);
-      setSystemInfo(sysData);
-      setBankAccounts(bankData);
+
+      // Save snapshots to local cache for instant future loads
+      try {
+        localStorage.setItem("sb_cache_summary", JSON.stringify(sumData));
+        localStorage.setItem("sb_cache_donations", JSON.stringify(donData));
+        localStorage.setItem("sb_cache_expenditures", JSON.stringify(expData));
+      } catch {
+        // Ignore cache storage errors
+      }
+
+      // Turn off full loading immediately so user sees the core dashboard without waiting
+      setLoading(false);
+
+      // Priority 2: Secondary data (progress, logs, milestones, bank accounts, system info)
+      Promise.all([
+        fetch(`/api/progress${q}`, { headers: headersOpt }).then(r => r.json()).catch(() => []),
+        fetch(`/api/audit-logs${q}`, { headers: headersOpt }).then(r => r.json()).catch(() => []),
+        fetch("/api/system-info").then(r => r.json()).catch(() => ({ version: "2.0.0", year: new Date().getFullYear() })),
+        fetch(`/api/milestones${q}`, { headers: headersOpt }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch("/api/bank-accounts").then(r => r.ok ? r.json() : []).catch(() => [])
+      ]).then(([progData, auditData, sysData, mileData, bankData]) => {
+        setProgressLog(progData);
+        setAuditLogs(auditData);
+        setSystemInfo(sysData);
+        setMilestones(mileData);
+        setBankAccounts(bankData);
+        try {
+          localStorage.setItem("sb_cache_progress", JSON.stringify(progData));
+        } catch {
+          // ignore
+        }
+      });
 
       if (activeToken) {
         try {
